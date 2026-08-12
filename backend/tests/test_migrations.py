@@ -9,14 +9,21 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 from app.config import get_settings
+from app.db import EXPECTED_SCHEMA_REVISION
 
 
 def _config(database_path: Path, monkeypatch: pytest.MonkeyPatch) -> Config:
     monkeypatch.setenv("ARCADE_DATABASE_URL", f"sqlite+aiosqlite:///{database_path}")
     get_settings.cache_clear()
     return Config(str(Path(__file__).parents[1] / "alembic.ini"))
+
+
+def test_startup_schema_revision_tracks_migration_head() -> None:
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+    assert ScriptDirectory.from_config(config).get_current_head() == EXPECTED_SCHEMA_REVISION
 
 
 def test_unversioned_exact_legacy_schema_is_adopted(

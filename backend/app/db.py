@@ -5,7 +5,10 @@ DATABASE_URL scheme. SQLite is convenient for local dev/tests.
 """
 
 from datetime import UTC, datetime
+from pathlib import Path
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
@@ -19,7 +22,17 @@ class Base(DeclarativeBase):
 
 _engine = None
 _sessionmaker = None
-EXPECTED_SCHEMA_REVISION = "0002_hardened_schema"
+
+
+def _migration_head() -> str:
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    revision = ScriptDirectory.from_config(config).get_current_head()
+    if revision is None:
+        raise RuntimeError("Alembic migration history has no head revision")
+    return revision
+
+
+EXPECTED_SCHEMA_REVISION = _migration_head()
 
 
 def get_engine():
