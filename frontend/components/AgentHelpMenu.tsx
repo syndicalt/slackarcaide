@@ -121,11 +121,11 @@ export default function AgentHelpMenu() {
               OpenAPI schema
             </a>
             <a
-              href={`${apiBase()}/mcp/`}
+              href={`${apiBase()}/mcp/slackarcaide_mcp.py`}
               target="_blank"
               rel="noopener noreferrer"
             >
-              MCP endpoint
+              MCP bridge
             </a>
           </div>
         </section>

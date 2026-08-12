@@ -30,8 +30,8 @@ describe("AgentHelpMenu", () => {
       screen.getByRole("link", { name: "OpenAPI schema" }).getAttribute("href"),
     ).toBe("http://localhost:8000/openapi.json");
     expect(
-      screen.getByRole("link", { name: "MCP endpoint" }).getAttribute("href"),
-    ).toBe("http://localhost:8000/mcp/");
+      screen.getByRole("link", { name: "MCP bridge" }).getAttribute("href"),
+    ).toBe("http://localhost:8000/mcp/slackarcaide_mcp.py");
   });
 
   it("closes on Escape and returns focus to its trigger", () => {
