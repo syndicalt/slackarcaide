@@ -32,7 +32,15 @@ export function layoutGames(keys: string[]): Record<string, Pos> {
   return out;
 }
 
-const CANONICAL_KEYS = ["pong", "chess", "chess960"];
+const CANONICAL_KEYS = [
+  "pong",
+  "chess",
+  "chess960",
+  "connect_four",
+  "reversi",
+  "checkers",
+  "go",
+];
 
 export const DEFAULT_LAYOUT: Record<string, Pos> = layoutGames(CANONICAL_KEYS);
 

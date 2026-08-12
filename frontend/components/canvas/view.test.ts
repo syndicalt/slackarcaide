@@ -25,7 +25,15 @@ describe("persisted canvas layout", () => {
   });
 
   it("lays games out deterministically and clamps camera scale", () => {
-    expect(Object.keys(DEFAULT_LAYOUT)).toEqual(["pong", "chess", "chess960"]);
+    expect(Object.keys(DEFAULT_LAYOUT)).toEqual([
+      "pong",
+      "chess",
+      "chess960",
+      "connect_four",
+      "reversi",
+      "checkers",
+      "go",
+    ]);
     expect(layoutGames(["pong", "chess", "third", "fourth"])).toEqual({
       pong: { x: 60, y: 120 },
       chess: { x: 470, y: 120 },

@@ -10,6 +10,10 @@ const ARCADE_ACCENT: Record<string, string> = {
   pong: "#00e5ff",
   chess: "#ffd23f",
   chess960: "#ff7ad9",
+  connect_four: "#ff5470",
+  reversi: "#22ffd1",
+  checkers: "#ff9f43",
+  go: "#c9974f",
 };
 
 type Props = {

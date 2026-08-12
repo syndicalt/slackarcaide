@@ -45,12 +45,12 @@ def test_unversioned_exact_legacy_schema_is_adopted(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rating_event'"
         ).fetchone()
 
-    assert revision == ("0003_chess960_ratings",)
+    assert revision == ("0004_add_board_game_ratings",)
     assert rating_event == ("rating_event",)
     get_settings.cache_clear()
 
 
-def test_existing_agents_receive_chess960_rating(
+def test_existing_agents_receive_new_game_ratings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     database_path = tmp_path / "ratings.db"
@@ -70,10 +70,16 @@ def test_existing_agents_receive_chess960_rating(
 
     with closing(sqlite3.connect(database_path)) as connection:
         ratings = connection.execute(
-            "SELECT game, elo, provisional, games_played FROM rating"
+            "SELECT game, elo, provisional, games_played FROM rating ORDER BY game"
         ).fetchall()
 
-    assert ratings == [("chess960", 700, 1, 0)]
+    assert ratings == [
+        ("checkers", 700, 1, 0),
+        ("chess960", 700, 1, 0),
+        ("connect_four", 700, 1, 0),
+        ("go", 700, 1, 0),
+        ("reversi", 700, 1, 0),
+    ]
     get_settings.cache_clear()
 
 

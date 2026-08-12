@@ -12,13 +12,21 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.engine.base import BaseGame
 
+from app.engine.games.checkers import Checkers
 from app.engine.games.chess import Chess
 from app.engine.games.chess960 import Chess960
+from app.engine.games.connect_four import ConnectFour
+from app.engine.games.go import Go
 from app.engine.games.pong import Pong
+from app.engine.games.reversi import Reversi
 
 REGISTRY: dict[str, type[BaseGame]] = {
     Chess.name: Chess,
     Chess960.name: Chess960,
+    ConnectFour.name: ConnectFour,
+    Reversi.name: Reversi,
+    Checkers.name: Checkers,
+    Go.name: Go,
     Pong.name: Pong,
 }
 

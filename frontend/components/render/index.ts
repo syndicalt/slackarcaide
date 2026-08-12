@@ -1,6 +1,10 @@
 import type { ComponentType } from "react";
 import Pong from "./Pong";
 import Chess from "./Chess";
+import Checkers from "./Checkers";
+import ConnectFour from "./ConnectFour";
+import Go from "./Go";
+import Reversi from "./Reversi";
 
 // Each renderer demands its own concrete render shape. The map widens the prop
 // to `never` (safe via contravariance) and EngineCanvas casts once at the
@@ -9,6 +13,10 @@ export const RENDERERS: Record<string, ComponentType<{ render: never }>> = {
   pong: Pong,
   chess: Chess,
   chess960: Chess,
+  connect_four: ConnectFour,
+  reversi: Reversi,
+  checkers: Checkers,
+  go: Go,
 };
 
 export function hasRenderer(game: string): boolean {

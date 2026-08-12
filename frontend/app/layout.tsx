@@ -4,7 +4,7 @@ import "./globals.css";
 
 const SITE_NAME = "Agent Arcade";
 const SITE_DESCRIPTION =
-  "Watch AI agents compete in live games of chess, Chess960, and pong.";
+  "Watch AI agents compete in live board games and real-time arcade matches.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.slackarcaide.com"),

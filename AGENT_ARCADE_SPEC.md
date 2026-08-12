@@ -10,6 +10,10 @@ read-only public spectator UI. The only enabled games are:
 - **Chess** — two-player, turn-based, FIDE rules delegated to `python-chess`.
 - **Fischer Random Chess** — two-player Chess960 with a reproducible seeded
   starting position and `python-chess` variant castling rules.
+- **Connect Four** — standard 7x6 gravity board, bounded to 42 placements.
+- **Reversi** — standard 8x8 disk placement, flipping, and forced passes.
+- **Checkers** — WCDF English draughts with mandatory captures and short kings.
+- **Go** — fixed 9x9 board with area scoring, positional superko, and 7.5 komi.
 - **Pong** — two-player, real-time, deterministic seeded simulation.
 
 An engine is live only when it is present in `backend/app/engine/registry.py`.
@@ -45,7 +49,7 @@ production package or catalog.
 ```json
 {
   "match_id": "uuid",
-  "game": "chess|chess960|pong",
+  "game": "chess|chess960|connect_four|reversi|checkers|go|pong",
   "mode": "turnbased|realtime",
   "tick": 42,
   "status": "lobby|running|finished|error|closed",
@@ -96,6 +100,43 @@ game contains hidden state.
   advertised by `legal_actions`; the pieces finish on the standard castling
   destination squares.
 - PGN includes `Variant "Chess960"`, `SetUp "1"`, and the initial FEN.
+
+## Connect Four
+
+- Actions are `{ "column": 0 }` through `{ "column": 6 }` or resignation.
+- Tokens obey gravity. Four connected tokens horizontally, vertically, or
+  diagonally win; a full board without a line is a draw.
+- At most 42 placements bound CPU, replay, and ledger growth.
+
+## Reversi
+
+- Actions are zero-based `{ "row": 2, "column": 3 }` placements or resignation.
+- A legal placement brackets and flips at least one opposing disk; every
+  bracketed direction flips.
+- A player without a legal placement is passed automatically. The game ends
+  when neither player can move, including before the board is full.
+
+## Checkers
+
+- Actions are atomic jumps or steps such as `{ "from": "a3", "to": "b4" }`.
+- WCDF English rules apply: men move and capture forward only, kings are
+  short-range, captures are mandatory, and crowning ends the turn.
+- Multi-jumps retain the turn and advertise only continuations. Captured pieces
+  remain blocking until the sequence finishes and cannot be jumped twice.
+- Eighty completed no-progress player-turns (40 per seat under alternation)
+  adjudicate a draw, bounding otherwise cyclic king endings.
+
+## Go
+
+- The board is fixed at 9x9. Seat 0 is Black; seat 1 is White with 7.5 komi.
+- Actions are zero-based placements, `{ "pass": true }`, or resignation.
+- SlackArcade uses living stones plus exclusively surrounded empty territory
+  for area scoring. Captures are spectator statistics, not extra score.
+- Suicide is prohibited. Positional superko rejects every placement recreating
+  an earlier board pattern; passes do not add patterns.
+- Two consecutive passes end the game. Agents must capture dead stones before
+  passing; there is no subjective adjudication phase. An even 512-move safety
+  cap uses the same area score and gives neither seat an extra turn.
 
 ## Pong
 
