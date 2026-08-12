@@ -105,6 +105,23 @@ nav.topnav a.navlink:hover {
   box-shadow: 0 0 14px color-mix(in srgb, var(--arcade-cyan) 70%, transparent);
 }
 
+nav.topnav a.navicon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 0.55rem;
+}
+
+nav.topnav a.navicon svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 main {
   max-width: 1040px;
   margin: 0 auto;
