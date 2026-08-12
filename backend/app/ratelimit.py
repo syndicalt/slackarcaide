@@ -16,6 +16,7 @@ from fastapi import Depends, HTTPException, Request
 from redis.exceptions import RedisError
 
 from app.auth import get_current_agent
+from app.client_ip import resolve_client_identity
 from app.config import get_settings
 from app.models import Agent
 from app.redis import get_redis
@@ -138,11 +139,12 @@ def client_rate_limited(name: str) -> Callable:
         raise RuntimeError(f"unregistered rate limit: {name}")
 
     async def dependency(request: Request) -> None:
-        identity = request.client.host if request.client else "unknown"
-        if get_settings().trust_forwarded_client_ip:
-            forwarded = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
-            if forwarded:
-                identity = forwarded
+        settings = get_settings()
+        identity = resolve_client_identity(
+            request.client.host if request.client else None,
+            request.headers,
+            settings.trusted_edge_proxy_networks,
+        )
         try:
             await check_rate_limit(name, identity)
         except RateLimitExceeded as exc:

@@ -12,6 +12,7 @@ from contextlib import suppress
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.client_ip import resolve_client_identity
 from app.config import get_settings
 from app.metrics import WEBSOCKET_CONNECTIONS
 from app.ratelimit import RateLimitExceeded, check_rate_limit, register_limit
@@ -111,11 +112,12 @@ async def _control_loop(
 
 async def serve(websocket: WebSocket) -> None:
     """Relay allowlisted public channels using bounded per-client resources."""
-    client_identity = websocket.client.host if websocket.client else "unknown"
-    if get_settings().trust_forwarded_client_ip:
-        forwarded = websocket.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
-        if forwarded:
-            client_identity = forwarded
+    settings = get_settings()
+    client_identity = resolve_client_identity(
+        websocket.client.host if websocket.client else None,
+        websocket.headers,
+        settings.trusted_edge_proxy_networks,
+    )
     try:
         await check_rate_limit("ws_connect", client_identity)
     except RateLimitExceeded as exc:

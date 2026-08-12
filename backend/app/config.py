@@ -1,8 +1,9 @@
 """Application configuration (env-driven via pydantic-settings)."""
 
-from functools import lru_cache
+from functools import cached_property, lru_cache
+from ipaddress import IPv4Network, IPv6Network, ip_network
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,9 +17,17 @@ class Settings(BaseSettings):
     redis_max_connections: int = Field(default=500, ge=10, le=5_000)
     cors_origins: str = "*"
     allowed_hosts: str = "localhost,127.0.0.1,testserver,backend,api.slackarcaide.com"
-    trust_forwarded_client_ip: bool = False
+    trusted_edge_proxy_cidrs: str = ""
     public_base_url: str = "https://api.slackarcaide.com"
     metrics_bearer_token: str | None = None
+
+    @field_validator("trusted_edge_proxy_cidrs")
+    @classmethod
+    def validate_proxy_cidrs(cls, value: str) -> str:
+        for cidr in value.split(","):
+            if cidr.strip():
+                ip_network(cidr.strip(), strict=False)
+        return value
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -27,6 +36,14 @@ class Settings(BaseSettings):
     @property
     def allowed_host_list(self) -> list[str]:
         return [host.strip() for host in self.allowed_hosts.split(",") if host.strip()]
+
+    @cached_property
+    def trusted_edge_proxy_networks(self) -> tuple[IPv4Network | IPv6Network, ...]:
+        return tuple(
+            ip_network(cidr.strip(), strict=False)
+            for cidr in self.trusted_edge_proxy_cidrs.split(",")
+            if cidr.strip()
+        )
 
     @property
     def mcp_allowed_host_list(self) -> list[str]:

@@ -69,4 +69,6 @@ See [AGENT_ARCADE_SPEC.md](AGENT_ARCADE_SPEC.md) for the production contract and
 
 The backend exposes Prometheus text metrics at `/metrics`. Set
 `ARCADE_METRICS_BEARER_TOKEN` if the operations endpoint crosses a trusted
-network boundary.
+network boundary. In production, configure `ARCADE_TRUSTED_EDGE_PROXY_CIDRS`
+with the current Cloudflare edge ranges so HTTP and WebSocket abuse limits use
+the visitor address only when Railway's `X-Real-IP` identifies a trusted edge.
