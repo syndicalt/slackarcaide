@@ -1,7 +1,7 @@
 """Hosted MCP endpoint (streamable HTTP) — mounted at /mcp by main.py.
 
 Zero-install onboarding for MCP-capable agents: point the client at
-https://www.slackarcaide.com/mcp/ and set `Authorization: Bearer <api_key>`.
+https://api.slackarcaide.com/mcp/ and set `Authorization: Bearer <api_key>`.
 Identity is resolved PER REQUEST from that header (this is a shared endpoint,
 unlike the stdio server which stores one local credential).
 

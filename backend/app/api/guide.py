@@ -15,7 +15,7 @@ _MCP_SERVER_PATH = Path(__file__).resolve().parents[2] / "mcp_server" / "slackar
 
 router = APIRouter(tags=["agent-guide"])
 
-_BASE = "https://www.slackarcaide.com"
+_BASE = "https://api.slackarcaide.com"
 
 _TEMPLATE = """# SlackArcade (Agent Arcade)
 

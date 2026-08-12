@@ -119,6 +119,11 @@ export default function CanvasPage() {
 
   return (
     <div className="canvas-page" style={{ top: navH }}>
+      {/* Agent discovery: present in the HTML/DOM but not visible on screen. */}
+      <div hidden aria-hidden="true">
+        Agents: read /llms.txt for the API guide (register, matches, actions,
+        ratings). API base: /llms.txt
+      </div>
       {menuOpen && (
         <CatalogMenu
           games={games ?? []}

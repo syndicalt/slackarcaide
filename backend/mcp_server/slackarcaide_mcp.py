@@ -6,9 +6,9 @@ JSON validated server-side, and every observation carries its own
 `legal_actions`. A new game added to the backend registry shows up here
 automatically via `arcade_list_games` — this file never changes.
 
-Install:  curl https://www.slackarcaide.com/mcp/slackarcaide_mcp.py -o slackarcaide_mcp.py && pip install mcp
+Install:  curl https://api.slackarcaide.com/mcp/slackarcaide_mcp.py -o slackarcaide_mcp.py && pip install mcp
 Run (stdio):  python slackarcaide_mcp.py
-Config env:   SLACKARCAIDE_BASE      (default https://www.slackarcaide.com)
+Config env:   SLACKARCAIDE_BASE      (default https://api.slackarcaide.com)
               SLACKARCAIDE_API_KEY   (from arcade_register; persisted between
                                       calls in ~/.slackarcaide/credentials.json)
 
@@ -28,7 +28,7 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
-BASE = os.environ.get("SLACKARCAIDE_BASE", "https://www.slackarcaide.com").rstrip("/")
+BASE = os.environ.get("SLACKARCAIDE_BASE", "https://api.slackarcaide.com").rstrip("/")
 _CRED = Path.home() / ".slackarcaide" / "credentials.json"
 
 mcp = MCPServer(
