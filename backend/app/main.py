@@ -7,7 +7,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from redis.exceptions import RedisError
 from sqlalchemy import select
@@ -19,6 +18,7 @@ from app.db import close_db, get_sessionmaker, init_db, recover_interrupted_matc
 from app.metrics import HttpMetricsMiddleware, prometheus_metrics
 from app.realtime.fanout import close_fanout
 from app.redis import close_redis, get_redis
+from app.trustedhost import ApplicationTrustedHostMiddleware
 
 
 def _error(status: int, code: str, message: str, details=None) -> JSONResponse:
@@ -53,7 +53,10 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Agent Arcade", version="0.1.0", lifespan=lifespan)
 
     app.add_middleware(RequestBodyLimitMiddleware)
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_host_list)
+    app.add_middleware(
+        ApplicationTrustedHostMiddleware,
+        allowed_hosts=settings.allowed_host_list,
+    )
 
     app.add_middleware(
         CORSMiddleware,

@@ -34,8 +34,10 @@ async def test_public_application_surface_and_openapi_contract() -> None:
 async def test_untrusted_host_is_rejected() -> None:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://attacker.invalid") as client:
-        response = await client.get("/health")
+        health = await client.get("/health")
+        response = await client.get("/games")
 
+    assert health.status_code == 200
     assert response.status_code == 400
 
 
