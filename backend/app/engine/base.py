@@ -1,4 +1,4 @@
-"""Game engine plugin interface (spec §8, §9, §14).
+"""Shared game-engine interface and deterministic clock support.
 
 Every game subclasses :class:`BaseGame`. The MatchManager drives all engines
 through this one interface, so engines are pure (no Redis, no ORM, no I/O) and
@@ -10,7 +10,7 @@ Contract (shared, implement in every engine):
   __init__(config, seed, seats)
   reset()                 reinitialize to the start position
   get_render_data()       minimal data the web UI needs to draw
-  observe(perspective=None) -> dict   full §4.4 `state`-level block
+  observe(perspective=None) -> dict   state, scores, actions, and clock data
 
 Realtime engines additionally implement:
   step(moves)             advance one tick, where moves = {seat: action|None}
@@ -31,14 +31,18 @@ Terminal handling (shared):
   these if it prefers—the manager only calls the public methods.)
 
 All engines get a seeded `self.rng = random.Random(seed)` for deterministic
-food/piece/deal spawning.
+simulation choices.
 """
+
 from __future__ import annotations
 
 import random
 import time
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pydantic import BaseModel
 
 
 class IllegalMove(ValueError):
@@ -54,27 +58,42 @@ class BaseGame(ABC):
     mode: str = "realtime"
     name: str = "base"
     CONFIG_DEFAULTS: dict[str, Any] = {}
+    CONFIG_MODEL: type[BaseModel] | None = None
+
+    @classmethod
+    def normalize_config(cls, config: dict | None) -> dict[str, Any]:
+        """Validate and materialize defaults for a trusted engine config."""
+        raw_config = {**cls.CONFIG_DEFAULTS, **(config or {})}
+        if cls.CONFIG_MODEL is None:
+            return raw_config
+        validated = cls.CONFIG_MODEL.model_validate(raw_config)
+        return validated.model_dump(mode="python")
 
     def __init__(self, config: dict, seed: int, seats: list[dict]) -> None:
-        self.config: dict = {**self.CONFIG_DEFAULTS, **(config or {})}
-        self.seed: int = int(seed)
+        self.config = self.normalize_config(config)
+        if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 2**63 - 1:
+            raise ValueError("seed must be an integer between 0 and 2^63 - 1")
+        if self.CONFIG_MODEL is not None:
+            expected_players = self.config.get("max_players")
+            if expected_players is not None and len(seats) != expected_players:
+                raise ValueError(f"expected {expected_players} seats, received {len(seats)}")
+            if [player.get("seat") for player in seats] != list(range(len(seats))):
+                raise ValueError("seats must be ordered and numbered from zero")
+        self.seed = seed
         self.seats: list[dict] = seats  # ordered [{"agent_id","seat","side","name"}]
-        self.rng: random.Random = random.Random(self.seed)
+        # Deterministic simulation, not a security primitive.
+        self.rng: random.Random = random.Random(self.seed)  # noqa: S311
         self.move_count: int = 0
-        self._seat_clock: dict[int, float] = {
-            s: time.monotonic() for s in range(len(seats))
-        }
         self._terminal: bool = False
         self._winner: list[int] | None = None
         self.reset()
+        self._initialize_clock()
 
     @abstractmethod
-    def reset(self) -> None:
-        ...
+    def reset(self) -> None: ...
 
     @abstractmethod
-    def get_render_data(self) -> dict:
-        ...
+    def get_render_data(self) -> dict: ...
 
     def get_legal_actions(self, seat: int) -> list[Any]:
         """Optional — strongly recommended (spec 4.4)."""
@@ -82,8 +101,8 @@ class BaseGame(ABC):
 
     def observe(self, perspective: int | None = None) -> dict:
         """Return the game-specific observation block (state, scores, summary,
-        legal_actions, last_move, time). perspective is a seat index for
-        symmetric-hidden-info games (chess/mancala), else ignored."""
+        legal_actions, last_move, time). ``perspective`` is reserved for future
+        games with seat-private observations; Chess and Pong ignore it."""
         raise NotImplementedError
 
     # realtime path ---------------------------------------------------------
@@ -100,31 +119,94 @@ class BaseGame(ABC):
         """Advance on a legal move; raise IllegalMove otherwise."""
         raise NotImplementedError(f"{self.__class__.__name__} is not a turn-based engine")
 
-    # turn-based clock support (manager calls these) --------------------------
+    # turn-based clock support (manager calls these) -------------------------
+    def _clock_config(self) -> dict[str, Any]:
+        return self.config.get("time_control") or {}
+
+    def _clock_enabled(self) -> bool:
+        return bool(self._clock_config().get("enabled"))
+
+    def _initialize_clock(self) -> None:
+        """Start a Fischer clock with only the side to move running."""
+        tc = self._clock_config()
+        base_ms = int(tc.get("base_sec", 60)) * 1000
+        self._clock_remaining_ms = {seat: base_ms for seat in range(len(self.seats))}
+        self._active_clock_seat: int | None = None
+        self._clock_started_at: float | None = None
+        if self._clock_enabled() and self.mode == "turnbased" and not self.is_terminal():
+            self._active_clock_seat = self.current_seat()
+            self._clock_started_at = time.monotonic()
+
+    def _remaining_at(self, seat: int, now: float) -> int:
+        remaining = self._clock_remaining_ms.get(seat, 0)
+        if seat == self._active_clock_seat and self._clock_started_at is not None:
+            remaining -= int((now - self._clock_started_at) * 1000)
+        return max(0, remaining)
+
+    def _freeze_clock(self, now: float | None = None) -> None:
+        if not self._clock_enabled() or self._active_clock_seat is None:
+            return
+        stopped_at = time.monotonic() if now is None else now
+        seat = self._active_clock_seat
+        self._clock_remaining_ms[seat] = self._remaining_at(seat, stopped_at)
+        self._active_clock_seat = None
+        self._clock_started_at = None
+
     def _note_move(self, seat: int) -> None:
-        """Turn-based engines call after a successful apply_action."""
+        """Commit elapsed time, add increment, and start the opponent's clock."""
         self.move_count += 1
-        self._seat_clock[seat] = time.monotonic()
+        if not self._clock_enabled():
+            return
+        now = time.monotonic()
+        if seat != self._active_clock_seat:
+            raise RuntimeError(
+                f"seat {seat} moved while seat {self._active_clock_seat} clock was active"
+            )
+        self._clock_remaining_ms[seat] = self._remaining_at(seat, now)
+        increment_ms = int(self._clock_config().get("increment_sec", 0)) * 1000
+        self._clock_remaining_ms[seat] += increment_ms
+        self._active_clock_seat = self.current_seat()
+        self._clock_started_at = now
 
     def _set_result(self, winner: list[int] | None) -> None:
         """Mark the game terminal. winner=None => draw / no winner."""
+        self._freeze_clock()
         self._terminal = True
         self._winner = winner
 
     def clock_ms(self, seat: int) -> int | None:
         """Remaining ms for `seat`, or None when time control is disabled."""
-        tc = self.config.get("time_control") or {}
-        if not tc.get("enabled"):
+        if not self._clock_enabled():
             return None
-        base = int(tc.get("base_sec", 60)) * 1000
-        inc = int(tc.get("increment_sec", 0)) * 1000
-        last = self._seat_clock.get(seat, time.monotonic())
-        return max(0, base + inc - int((time.monotonic() - last) * 1000))
+        if seat not in self._clock_remaining_ms:
+            raise ValueError(f"unknown seat {seat}")
+        return self._remaining_at(seat, time.monotonic())
+
+    def clock_state(self) -> dict[str, Any] | None:
+        """Serializable clock state keyed by stable agent id (or seat fallback)."""
+        if not self._clock_enabled():
+            return None
+        now = time.monotonic()
+        remaining: dict[str, int] = {}
+        for seat, player in enumerate(self.seats):
+            key = str(player.get("agent_id", seat))
+            remaining[key] = self._remaining_at(seat, now)
+        tc = self._clock_config()
+        return {
+            "remaining_ms": remaining,
+            "increment_ms": int(tc.get("increment_sec", 0)) * 1000,
+            "active_seat": self._active_clock_seat,
+        }
 
     def timeout_loss(self, seat: int) -> None:
         """Declare the other player(s) the winners on clock timeout at `seat`."""
+        remaining = self.clock_ms(seat)
+        if remaining is None:
+            raise RuntimeError("cannot declare a clock timeout without time control")
+        if remaining > 0:
+            raise RuntimeError(f"seat {seat} still has {remaining} ms remaining")
+        self._clock_remaining_ms[seat] = 0
         self._set_result([s for s in range(len(self.seats)) if s != seat] or None)
-        self._note_move(seat)
 
     # shared terminal -------------------------------------------------------
     def is_terminal(self) -> bool:

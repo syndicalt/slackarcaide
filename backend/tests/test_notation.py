@@ -6,6 +6,7 @@ Covers:
   * the PGN round-trips through python-chess's parser (validity proof);
   * non-chess games simply leave notation NULL.
 """
+
 import os
 
 os.environ.setdefault("ARCADE_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
@@ -13,7 +14,6 @@ os.environ.setdefault("ARCADE_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 import io
 
 import chess.pgn
-import pytest
 
 from app.db import get_sessionmaker, init_db
 from app.models import Agent, Match
@@ -66,7 +66,7 @@ async def test_finish_persists_pgn_on_match_row():
         a2 = Agent(display_name="pgn-b", api_key_hash="h-pgn-b", stats={})
         s.add_all([a1, a2])
         await s.commit()
-        m = await mgr.create(a1, "chess", "turnbased", {}, s)
+        m = await mgr.create(a1, "chess", {}, s)
         m = await mgr.join(m, a2, s)
         mid = m.id
 

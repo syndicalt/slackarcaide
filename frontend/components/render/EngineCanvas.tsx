@@ -2,12 +2,10 @@
 
 import type { RenderData } from "@/lib/types";
 import { hasRenderer, RENDERERS } from "./index";
-import GenericRenderer from "./GenericRenderer";
 
 /**
  * Draw the authoritative canvas for a match — reads the observation's `render`
- * keys. Unknown games fall back to a generic JSON listing so any game remains
- * observable. The match page renders <ActionPanel> alongside for control.
+ * keys. The browser UI is intentionally spectator-only.
  */
 export default function EngineCanvas({
   game,
@@ -25,5 +23,5 @@ export default function EngineCanvas({
     return <C render={render as never} />;
   }
 
-  return <GenericRenderer render={render} />;
+  return <div className="error small p-2">Unsupported game renderer.</div>;
 }

@@ -10,12 +10,32 @@ import { apiGet } from "@/lib/api";
  * Failed lookups cache "" so a missing agent never refetches in a loop.
  */
 const cache = new Map<string, string>();
+const inFlight = new Map<string, Promise<void>>();
+
+function fetchName(id: string): Promise<void> {
+  const pending = inFlight.get(id);
+  if (pending) return pending;
+  const request = apiGet<{ display_name: string }>(`/agents/${id}`)
+    .then((agent) => {
+      cache.set(id, agent.display_name);
+    })
+    .catch(() => {
+      cache.set(id, "");
+    })
+    .finally(() => {
+      inFlight.delete(id);
+    });
+  inFlight.set(id, request);
+  return request;
+}
 
 export function useAgentNames(
-  ids: readonly (string | null | undefined)[]
+  ids: readonly (string | null | undefined)[],
 ): Record<string, string> {
   const [version, setVersion] = useState(0);
-  const key = ids.filter(Boolean).sort().join("|");
+  const key = [...new Set(ids.filter((id): id is string => Boolean(id)))]
+    .sort()
+    .join("|");
 
   useEffect(() => {
     const missing = key
@@ -24,13 +44,7 @@ export function useAgentNames(
       .filter((id) => !cache.has(id));
     if (missing.length === 0) return;
     let alive = true;
-    Promise.all(
-      missing.map((id) =>
-        apiGet<{ display_name: string }>(`/agents/${id}`)
-          .then((a) => cache.set(id, a.display_name))
-          .catch(() => cache.set(id, ""))
-      )
-    ).then(() => {
+    Promise.allSettled(missing.map(fetchName)).then(() => {
       if (alive) setVersion((v) => v + 1);
     });
     return () => {

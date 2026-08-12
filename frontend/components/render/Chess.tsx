@@ -5,8 +5,18 @@ import type { RenderChess } from "@/lib/types";
 
 const CELL = 44;
 const GLYPHS: Record<string, string> = {
-  K: "♔", Q: "♕", R: "♖", B: "♗", N: "♘", P: "♙",
-  k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟",
+  K: "♔",
+  Q: "♕",
+  R: "♖",
+  B: "♗",
+  N: "♘",
+  P: "♙",
+  k: "♚",
+  q: "♛",
+  r: "♜",
+  b: "♝",
+  n: "♞",
+  p: "♟",
 };
 
 function fenRows(fen: string): string[][] {
@@ -77,7 +87,8 @@ export default function ChessRenderer({ render }: { render: RenderChess }) {
     }
 
     // last-move highlight (from/to if present)
-    const lm = render.last_move as { from?: string; to?: string } | null | undefined;
+    const lm = render.last_move as
+      { from?: string; to?: string } | null | undefined;
     const toRect = (sq: string) => {
       if (!sq || sq.length < 2) return null;
       const file = sq.charCodeAt(0) - 97;

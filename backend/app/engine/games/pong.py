@@ -1,4 +1,4 @@
-"""Pong — 2-player realtime engine (spec §8.1).
+"""Deterministic two-player realtime Pong engine.
 
 Reference implementation for the realtime loop. Server-authoritative and
 deterministic given seed. Actions per player are `{"action": "up"|"down"|"noop"}`
@@ -18,8 +18,11 @@ javascript-pong/part4), adapted to our tick-based authoritative loop:
   * After a score the ball freezes at center for `serve_delay_ticks` and is
     served toward the player who conceded the point (classic convention).
 """
+
 import math
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.engine.base import BaseGame
 
@@ -28,12 +31,44 @@ W, H = 800, 500
 PADDLE_H = 90
 PADDLE_W = 14
 BALL_R = 6.0  # must stay in sync with get_render_data()["ball"]["r"]: every solid
-              # collision (paddle face/edges, walls) is computed on this radius.
+# collision (paddle face/edges, walls) is computed on this radius.
 DT = 1.0  # arbitrary per-tick delta; tuned with speeds below
 
 # Paddle rects in field space: seat 0 hugs x=0, seat 1 hugs x=W-PADDLE_W.
 # Renderers must draw these exact rects for ball/paddle contact to line up.
 _PADDLE_X = {0: 0.0, 1: W - PADDLE_W}
+
+
+class PongConfig(BaseModel):
+    """Admin-controlled Pong rules with safe simulation bounds."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+
+    players_required: Literal[2] = 2
+    max_players: Literal[2] = 2
+    ranked: bool = True
+    win_points: int = Field(default=11, ge=1, le=100)
+    tick_rate: int = Field(default=30, ge=10, le=240)
+    ball_speed: float = Field(default=15.0, gt=0, le=200)
+    max_ball_speed: float = Field(default=60.0, gt=0, le=240)
+    ball_accel: float = Field(default=1.04, ge=1, le=2)
+    speedup: float = Field(default=1.06, ge=1, le=2)
+    time_accel_rate: float = Field(default=0.02, ge=0, le=1)
+    accel_interval: int = Field(default=30, ge=1, le=3_600)
+    paddle_speed: float = Field(default=20.0, gt=0, le=500)
+    serve_delay_ticks: int = Field(default=30, ge=0, le=3_600)
+    max_duration_seconds: int = Field(default=1_200, ge=60, le=3_600)
+    paddle_spin: bool = True
+    max_deflect_angle: float = Field(default=math.pi / 3.0, ge=0, lt=math.pi / 2)
+    seed: int | None = Field(default=None, ge=0, le=2**63 - 1)
+
+    @model_validator(mode="after")
+    def validate_speed_range(self) -> "PongConfig":
+        if self.max_ball_speed < self.ball_speed:
+            raise ValueError("max_ball_speed must be greater than or equal to ball_speed")
+        if self.tick_rate * self.max_duration_seconds > 100_000:
+            raise ValueError("tick_rate * max_duration_seconds must not exceed 100000")
+        return self
 
 
 class Pong(BaseGame):
@@ -45,32 +80,15 @@ class Pong(BaseGame):
         "max_players": 2,
         "players_before_start": 2,
         "elo_ranked": True,
-        "blurb": "Two-player paddle tennis. First to 11.",
+        "blurb": "Two-player paddle tennis. First to 11; endless rallies draw at the limit.",
     }
-    CONFIG_DEFAULTS = {
-        "max_players": 2,
-        "win_points": 11,
-        "tick_rate": 30,
-        # Classic pong curve: the ball starts slow (~1.8s to cross the field)
-        # and accelerates over the rally (per hit + per second) and per point,
-        # up to a hard cap so the game stays watchable.
-        "ball_speed": 15.0,        # serve speed (slow start)
-        "max_ball_speed": 60.0,    # velocity cap (~0.4s to cross)
-        "ball_accel": 1.04,        # multiplier per paddle hit
-        "speedup": 1.06,           # multiplier per point scored
-        "time_accel_rate": 0.02,   # continuous +2%/s during play
-        "accel_interval": 30,      # ticks (30 == ~1s at tick_rate 30)
-        "paddle_speed": 20.0,
-        "serve_delay_ticks": 30,   # ball frozen at center after a score (~1s)
-        "paddle_spin": True,       # moving paddles add/remove vertical spin
-        # Paddle deflection (Kivy style): how far off-center a hit cuts the
-        # ball vertically. A dead-center hit bounces straight back; a hit near
-        # the paddle edge darts up/down by up to this angle relative to the
-        # (flipped) incoming horizontal component. Radians.
-        "max_deflect_angle": math.pi / 3.0,
-    }
+    CONFIG_MODEL = PongConfig
+    CONFIG_DEFAULTS = PongConfig().model_dump(mode="python")
 
     def reset(self) -> None:
+        self._terminal = False
+        self._winner = None
+        self.rng.seed(self.seed)
         self.point_left = 0
         self.point_right = 0
         self.tick = 0
@@ -127,6 +145,8 @@ class Pong(BaseGame):
 
     # ---- realtime ---------------------------------------------------------
     def step(self, moves: dict[int, Any]) -> None:
+        if self.is_terminal():
+            return
         for seat in (0, 1):
             mult = self._parse_action(moves.get(seat))
             if mult is not None:
@@ -139,7 +159,7 @@ class Pong(BaseGame):
 
         if self._serve_timer > 0:
             self._serve_timer -= 1
-            self.tick += 1
+            self._advance_tick()
             return
 
         # ---- solid ball integration (continuous collision) ----
@@ -163,11 +183,11 @@ class Pong(BaseGame):
             # bounce off the solid top/bottom walls.
             self.ball["x"] = end_x
             self.ball["y"] = end_y
-            if self.ball["y"] < 0:
-                self.ball["y"] = -self.ball["y"]
+            if self.ball["y"] < BALL_R:
+                self.ball["y"] = 2 * BALL_R - self.ball["y"]
                 self.ball["vy"] = abs(self.ball["vy"])
-            elif self.ball["y"] > H:
-                self.ball["y"] = 2 * H - self.ball["y"]
+            elif self.ball["y"] > H - BALL_R:
+                self.ball["y"] = 2 * (H - BALL_R) - self.ball["y"]
                 self.ball["vy"] = -abs(self.ball["vy"])
 
         # continuous time-based acceleration (not just on point/victory)
@@ -181,7 +201,16 @@ class Pong(BaseGame):
         elif self.ball["x"] > W + 20:
             self._score(scorer=0, conceder=1)
 
+        self._advance_tick()
+
+    def _advance_tick(self) -> None:
         self.tick += 1
+        duration_ticks = self.config["tick_rate"] * self.config["max_duration_seconds"]
+        if self.tick >= duration_ticks and not self.is_terminal():
+            self.ball["vx"] = 0.0
+            self.ball["vy"] = 0.0
+            self._serve_timer = 0
+            self._set_result(None)
 
     def _score(self, scorer: int, conceder: int) -> None:
         if scorer == 0:
@@ -193,14 +222,26 @@ class Pong(BaseGame):
             "seat": scorer,
             "scores": [self.point_left, self.point_right],
         }
+        if max(self.point_left, self.point_right) >= self.config["win_points"]:
+            self.ball["vx"] = 0.0
+            self.ball["vy"] = 0.0
+            self._serve_timer = 0
+            self._set_result([scorer])
+            return
         self._bump_speed()
         self._serve(toward_seat=conceder)
 
     # ---- collision (Gordon-style segment sweep) -----------------------------
     @staticmethod
     def _segment_intercept(
-        x1: float, y1: float, x2: float, y2: float,
-        x3: float, y3: float, x4: float, y4: float,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        x3: float,
+        y3: float,
+        x4: float,
+        y4: float,
     ) -> tuple[float, float] | None:
         """Intersection point of segments (x1,y1)-(x2,y2) and (x3,y3)-(x4,y4)."""
         denom = ((y4 - y3) * (x2 - x1)) - ((x4 - x3) * (y2 - y1))
@@ -251,9 +292,7 @@ class Pong(BaseGame):
             ey = bottom + r
         else:
             return None
-        pt = self._segment_intercept(
-            x, y, x + nx, y + ny, left - r, ey, right + r, ey
-        )
+        pt = self._segment_intercept(x, y, x + nx, y + ny, left - r, ey, right + r, ey)
         if pt is not None:
             return (seat, pt, "edge")
         return None
@@ -270,8 +309,8 @@ class Pong(BaseGame):
         # impact point.
         rel = (y_contact - (self.paddles[seat] + PADDLE_H / 2.0)) / (PADDLE_H / 2.0)
         accel = float(self.config["ball_accel"])
-        vx = -self.ball["vx"] * accel                     # flip horizontal, grow
-        vy = self.ball["vy"] * accel                      # keep vertical, grow
+        vx = -self.ball["vx"] * accel  # flip horizontal, grow
+        vy = self.ball["vy"] * accel  # keep vertical, grow
         cut = rel * abs(vx) * math.tan(float(self.config["max_deflect_angle"]))
         vy += cut
 
@@ -311,14 +350,6 @@ class Pong(BaseGame):
         self._clamp_ball_speed()
 
     # ---- shared -----------------------------------------------------------
-    def is_terminal(self) -> bool:
-        return max(self.point_left, self.point_right) >= int(self.config["win_points"])
-
-    def get_winner(self) -> list[int] | None:
-        if not self.is_terminal():
-            return None
-        return [0] if self.point_left > self.point_right else [1]
-
     def get_scores(self) -> dict:
         return {"left": self.point_left, "right": self.point_right}
 
@@ -348,7 +379,9 @@ class Pong(BaseGame):
         base = f"Pong {self.point_left}-{self.point_right} (first to {win})"
         if self.is_terminal():
             w = self.get_winner()
-            return f"Pong over {self.point_left}-{self.point_right} — player {w[0] if w else '?'} wins"
+            if not w:
+                return f"Pong over {self.point_left}-{self.point_right} — duration-limit draw"
+            return f"Pong over {self.point_left}-{self.point_right} — player {w[0]} wins"
         return base
 
     def observe(self, perspective: int | None = None) -> dict:
@@ -356,15 +389,21 @@ class Pong(BaseGame):
             "state": {
                 "paddles": [self.paddles[0], self.paddles[1]],
                 "velocities": [self.vys[0], self.vys[1]],
-                "ball": {"x": self.ball["x"], "y": self.ball["y"],
-                         "vx": self.ball["vx"], "vy": self.ball["vy"]},
+                "ball": {
+                    "x": self.ball["x"],
+                    "y": self.ball["y"],
+                    "vx": self.ball["vx"],
+                    "vy": self.ball["vy"],
+                },
                 "paddle_h": PADDLE_H,
                 "paddle_w": PADDLE_W,
                 "w": W,
                 "h": H,
                 "serve_in": self._serve_timer,
             },
-            "legal_actions": [[{"action": "up"}, {"action": "down"}, {"action": "noop"}] for _ in self.seats],
+            "legal_actions": [
+                [{"action": "up"}, {"action": "down"}, {"action": "noop"}] for _ in self.seats
+            ],
             "scores": {"left": self.point_left, "right": self.point_right},
             "summary": self.summary(),
             "last_move": self.last_move,

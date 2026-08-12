@@ -52,8 +52,8 @@ export default function MatchPage({ params }: { params: { id: string } }) {
 
       {detail && (
         <p className="muted small">
-          seed {detail.seed} · mode {detail.mode} ·{" "}
-          {detail.players.length} player{detail.players.length === 1 ? "" : "s"}
+          seed {detail.seed} · mode {detail.mode} · {detail.players.length}{" "}
+          player{detail.players.length === 1 ? "" : "s"}
         </p>
       )}
       {detailError && <p className="error">{detailError}</p>}
@@ -96,14 +96,15 @@ export default function MatchPage({ params }: { params: { id: string } }) {
             ) : (
               <p className="muted">No players yet.</p>
             )}
-            {observation?.scores && Object.keys(observation.scores).length > 0 && (
-              <div className="mt-3">
-                <h2 className="text-sm">Scores</h2>
-                <pre className="muted mono small bg-[#0b1018] rounded p-2 whitespace-pre-wrap">
-                  {JSON.stringify(observation.scores, null, 2)}
-                </pre>
-              </div>
-            )}
+            {observation?.scores &&
+              Object.keys(observation.scores).length > 0 && (
+                <div className="mt-3">
+                  <h2 className="text-sm">Scores</h2>
+                  <pre className="muted mono small bg-[#0b1018] rounded p-2 whitespace-pre-wrap">
+                    {JSON.stringify(observation.scores, null, 2)}
+                  </pre>
+                </div>
+              )}
           </div>
 
           <Chat channel={id} title="Match thread" />

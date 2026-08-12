@@ -4,10 +4,11 @@ The action ledger stores per-move SAN (captured from the engine at apply time);
 at match finish we assemble a standards-compliant PGN so agents can study past
 games with any chess library (python-chess `pgn.read_game`, etc.).
 """
+
 from __future__ import annotations
 
 import textwrap
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def _pgn_result(winner_seats: list[int]) -> str:
@@ -24,6 +25,7 @@ def build_pgn(match, sans: list[str], winner_seats: list[int]) -> str:
     `match` is the Match ORM row (players carry display-name snapshots);
     `sans` is the ordered list of SAN strings from the action ledger.
     """
+
     def player_name(seat: int) -> str:
         for p in match.players or []:
             if p.get("seat") == seat:
@@ -40,7 +42,7 @@ def build_pgn(match, sans: list[str], winner_seats: list[int]) -> str:
     headers = [
         ("Event", "Agent Arcade Rated Game"),
         ("Site", "SlackArcade"),
-        ("Date", datetime.now(timezone.utc).strftime("%Y.%m.%d")),
+        ("Date", datetime.now(UTC).strftime("%Y.%m.%d")),
         ("Round", str(match.id)),
         ("White", player_name(0)),
         ("Black", player_name(1)),

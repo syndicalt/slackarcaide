@@ -20,6 +20,7 @@ export function isObservation(data: unknown): data is Observation {
     typeof data === "object" &&
     "match_id" in data &&
     "render" in data &&
+    (data as Observation).render !== null &&
     typeof (data as Observation).render === "object"
   );
 }
@@ -41,12 +42,15 @@ export function isMessage(data: unknown): data is Message {
  */
 export function useRealtime(
   channels: string[],
-  onRaw: (data: unknown) => void
+  onRaw: (data: unknown) => void,
 ): RealtimeStatus {
   const [status, setStatus] = useState<RealtimeStatus>("connecting");
   const key = channels.join("|");
   const onRawRef = useRef(onRaw);
-  onRawRef.current = onRaw;
+
+  useEffect(() => {
+    onRawRef.current = onRaw;
+  }, [onRaw]);
 
   useEffect(() => {
     const chans = key.split("|").filter(Boolean);
@@ -60,7 +64,6 @@ export function useRealtime(
       onError: () => setStatus("closed"),
     });
     return () => client.close();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   return status;
@@ -80,10 +83,12 @@ export function useObservation(matchId: string) {
   const pendingRef = useRef<Observation | null>(null);
   const rafRef = useRef<number>(0);
   const statusRef = useRef<RealtimeStatus>("connecting");
-  statusRef.current = useRealtime(
+  const lastRealtimeAtRef = useRef(0);
+  const status = useRealtime(
     [`match:${matchId}`, `messages:${matchId}`],
     (data) => {
       if (!isObservation(data)) return;
+      lastRealtimeAtRef.current = Date.now();
       pendingRef.current = data;
       if (!rafRef.current && typeof requestAnimationFrame !== "undefined") {
         rafRef.current = requestAnimationFrame(() => {
@@ -93,48 +98,59 @@ export function useObservation(matchId: string) {
           if (d) setObservation(d);
         });
       }
-    }
+    },
   );
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   useEffect(
     () => () => {
       if (rafRef.current && typeof cancelAnimationFrame !== "undefined")
         cancelAnimationFrame(rafRef.current);
     },
-    []
+    [],
   );
 
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let request: AbortController | null = null;
 
     const fetchOnce = async () => {
+      request?.abort();
+      request = new AbortController();
       try {
-        const data = await apiGet<Observation>(`/matches/${matchId}/state`);
+        const data = await apiGet<Observation>(`/matches/${matchId}/state`, {
+          signal: request.signal,
+        });
         if (alive) {
           setObservation(data);
           setError("");
         }
       } catch (e) {
-        if (alive) setError(errMsg(e));
+        if (alive && !request.signal.aborted) setError(errMsg(e));
       }
     };
 
     fetchOnce();
 
     const loop = async () => {
-      if (statusRef.current !== "open") await fetchOnce();
-      if (alive) timer = setTimeout(loop, 1500);
+      const realtimeIsStale = Date.now() - lastRealtimeAtRef.current > 5_000;
+      if (statusRef.current !== "open" || realtimeIsStale) await fetchOnce();
+      if (alive) timer = setTimeout(loop, 2_000);
     };
     timer = setTimeout(loop, 1500);
 
     return () => {
       alive = false;
+      request?.abort();
       if (timer) clearTimeout(timer);
     };
   }, [matchId]);
 
-  return { observation, error, status: statusRef.current };
+  return { observation, error, status };
 }
 
 /**
@@ -163,9 +179,17 @@ export function useCanvasData(intervalMs = 6000) {
   }, []);
 
   useEffect(() => {
-    refresh();
-    const timer = setInterval(refresh, intervalMs);
-    return () => clearInterval(timer);
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const loop = async () => {
+      await refresh();
+      if (active) timer = setTimeout(loop, intervalMs);
+    };
+    void loop();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
   }, [refresh, intervalMs]);
 
   return { games, matches, error, refresh };

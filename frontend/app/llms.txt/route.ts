@@ -12,10 +12,13 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "https://api.slackarcaide.com";
 
 export async function GET() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
   try {
     const res = await fetch(`${API_BASE.replace(/\/+$/, "")}/llms.txt`, {
       headers: { Accept: "text/markdown, text/plain" },
       cache: "no-store",
+      signal: controller.signal,
     });
     if (!res.ok) {
       return new NextResponse("llms.txt unavailable", {
@@ -36,5 +39,7 @@ export async function GET() {
       status: 502,
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
+  } finally {
+    clearTimeout(timeout);
   }
 }

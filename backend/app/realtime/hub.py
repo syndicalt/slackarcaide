@@ -1,144 +1,146 @@
-"""WebSocket fan-out hub backed by Redis pub/sub.
+"""Bounded unauthenticated WebSocket fan-out for public spectators."""
 
-Clients connect over WS and send JSON control frames to subscribe/unsubscribe
-from literal Redis channel names (``match:{id}``, ``messages:{channel}``).
-Every message published to a subscribed channel is forwarded to the socket
-verbatim (the backend publishes JSON text via realtime/publisher.py).
+from __future__ import annotations
 
-The hub is resilient to Redis being temporarily unavailable: subscribe/read
-failures are logged, the socket stays open, and a renewed subscription is
-attempted on the next control frame or read cycle.
-"""
 import asyncio
 import json
 import logging
+import time
+from collections import deque
+from contextlib import suppress
 
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
+from sqlalchemy.exc import SQLAlchemyError
 
-from app.redis import get_redis
+from app.config import get_settings
+from app.metrics import WEBSOCKET_CONNECTIONS
+from app.ratelimit import RateLimitExceeded, check_rate_limit, register_limit
+from app.realtime.channels import channels_exist, normalize_channel
+from app.realtime.fanout import Subscription, fanout
 
-logger = logging.getLogger("app.realtime.hub")
+logger = logging.getLogger(__name__)
 
-_READ_TIMEOUT = 1.0
+MAX_SUBSCRIPTIONS = 16
+MAX_CONTROL_FRAME_BYTES = 4096
+MAX_CONTROL_FRAMES_PER_MINUTE = 120
+_OUTBOUND_QUEUE_SIZE = 128
+
+register_limit("ws_connect", max_count=60, window_s=60)
 
 
-async def _reader(
+async def _writer(websocket: WebSocket, outbound: asyncio.Queue[str]) -> None:
+    while True:
+        await websocket.send_text(await outbound.get())
+
+
+def _enqueue(outbound: asyncio.Queue[str], payload: str) -> None:
+    if outbound.full():
+        with suppress(asyncio.QueueEmpty):
+            outbound.get_nowait()
+    with suppress(asyncio.QueueFull):
+        outbound.put_nowait(payload)
+
+
+async def _relay(subscription: Subscription, outbound: asyncio.Queue[str]) -> None:
+    while True:
+        _enqueue(outbound, await subscription.queue.get())
+
+
+async def _control_loop(
     websocket: WebSocket,
-    subscribed: set[str],
-    stop: asyncio.Event,
+    subscription: Subscription,
+    outbound: asyncio.Queue[str],
 ) -> None:
-    """Own the Redis pubsub subscription and fan messages out to the socket.
-
-    ``subscribed`` is the live, shared desired-set mutated by the control loop.
-    It is re-snapshotted each cycle and the Redis subscription is rebuilt to
-    match, so a Redis outage only delays the effect until the next message or
-    read timeout.
-    """
-    pubsub = None
-    actual: set[str] = set()
-    try:
-        while not stop.is_set():
-            desired = set(subscribed)
-            try:
-                if pubsub is None:
-                    r = await get_redis()
-                    pubsub = r.pubsub()
-                    actual = set()
-
-                to_add = desired - actual
-                to_remove = actual - desired
-                if to_remove:
-                    await pubsub.unsubscribe(*to_remove)
-                if to_add:
-                    await pubsub.subscribe(*to_add)
-                actual = set(desired)
-
-                if not actual:
-                    # nothing to listen to yet; idle so we don't busy-spin
-                    try:
-                        await asyncio.wait_for(stop.wait(), timeout=_READ_TIMEOUT)
-                    except asyncio.TimeoutError:
-                        pass
-                    continue
-
-                msg = await pubsub.get_message(
-                    ignore_subscribe_messages=True, timeout=_READ_TIMEOUT
-                )
-                if msg and msg.get("type") == "message":
-                    data = msg.get("data")
-                    if isinstance(data, str):
-                        await websocket.send_text(data)
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.warning("realtime subscribe/read failed", exc_info=True)
-                if pubsub is not None:
-                    try:
-                        await pubsub.aclose()
-                    except Exception:
-                        pass
-                pubsub = None
-                try:
-                    await asyncio.wait_for(stop.wait(), timeout=_READ_TIMEOUT)
-                except asyncio.TimeoutError:
-                    pass
-    except asyncio.CancelledError:
-        raise
-    except Exception:
-        logger.exception("realtime reader stopped unexpectedly")
-    finally:
-        if pubsub is not None:
-            try:
-                await pubsub.aclose()
-            except Exception:
-                pass
-
-
-async def _control_loop(websocket: WebSocket, subscribed: set[str]) -> None:
-    """Read client control frames and mutate the desired subscription set."""
+    frame_times: deque[float] = deque()
+    desired: set[str] = set()
     while True:
         raw = await websocket.receive_text()
+        if len(raw.encode("utf-8")) > MAX_CONTROL_FRAME_BYTES:
+            await websocket.close(code=1009, reason="control frame too large")
+            return
+
+        now = time.monotonic()
+        while frame_times and frame_times[0] <= now - 60:
+            frame_times.popleft()
+        if len(frame_times) >= MAX_CONTROL_FRAMES_PER_MINUTE:
+            await websocket.close(code=1008, reason="control frame rate exceeded")
+            return
+        frame_times.append(now)
+
         try:
             data = json.loads(raw)
         except (ValueError, TypeError):
             continue
         if not isinstance(data, dict):
             continue
-        ctype = data.get("type")
-        if ctype == "subscribe":
-            channels = data.get("channels")
-            if isinstance(channels, list):
-                subscribed.update(c for c in channels if isinstance(c, str))
-        elif ctype == "unsubscribe":
-            channels = data.get("channels")
-            if isinstance(channels, list):
-                subscribed.difference_update(c for c in channels if isinstance(c, str))
-        elif ctype == "ping":
-            await websocket.send_text(json.dumps({"type": "pong"}))
+
+        frame_type = data.get("type")
+        if frame_type == "ping":
+            _enqueue(outbound, '{"type":"pong"}')
+            continue
+        if frame_type not in {"subscribe", "unsubscribe"}:
+            continue
+
+        values = data.get("channels")
+        if not isinstance(values, list) or len(values) > MAX_SUBSCRIPTIONS:
+            _enqueue(outbound, '{"type":"error","code":"invalid_channels"}')
+            continue
+        channels = {channel for value in values if (channel := normalize_channel(value))}
+        if len(channels) != len(values):
+            _enqueue(outbound, '{"type":"error","code":"invalid_channel"}')
+            continue
+        try:
+            known_channels = await channels_exist(channels)
+        except SQLAlchemyError:
+            logger.exception("failed to validate realtime channels")
+            _enqueue(outbound, '{"type":"error","code":"realtime_unavailable"}')
+            continue
+        if not known_channels:
+            _enqueue(outbound, '{"type":"error","code":"channel_not_found"}')
+            continue
+
+        if frame_type == "subscribe":
+            if len(desired | channels) > MAX_SUBSCRIPTIONS:
+                _enqueue(outbound, '{"type":"error","code":"too_many_channels"}')
+                continue
+            desired.update(channels)
+        else:
+            desired.difference_update(channels)
+        await fanout.replace_channels(subscription, desired)
 
 
 async def serve(websocket: WebSocket) -> None:
-    """Accept a socket and relay subscribed Redis channels until disconnect."""
-    await websocket.accept()
-
-    subscribed: set[str] = set()
-    stop = asyncio.Event()
-    reader: asyncio.Task | None = None
+    """Relay allowlisted public channels using bounded per-client resources."""
+    client_identity = websocket.client.host if websocket.client else "unknown"
+    if get_settings().trust_forwarded_client_ip:
+        forwarded = websocket.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+        if forwarded:
+            client_identity = forwarded
     try:
-        reader = asyncio.create_task(_reader(websocket, subscribed, stop))
-        await _control_loop(websocket, subscribed)
-    except Exception:
-        # covers WebSocketDisconnect and ordinary socket teardown
+        await check_rate_limit("ws_connect", client_identity)
+    except RateLimitExceeded as exc:
+        await websocket.close(code=1013, reason=f"retry after {exc.retry_after}s")
+        return
+
+    await websocket.accept()
+    subscription = await fanout.register()
+    outbound: asyncio.Queue[str] = asyncio.Queue(maxsize=_OUTBOUND_QUEUE_SIZE)
+    writer = asyncio.create_task(_writer(websocket, outbound), name="websocket-writer")
+    relay = asyncio.create_task(_relay(subscription, outbound), name="websocket-relay")
+    WEBSOCKET_CONNECTIONS.inc()
+    try:
+        await _control_loop(websocket, subscription, outbound)
+    except WebSocketDisconnect:
         pass
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("unexpected WebSocket control failure")
     finally:
-        stop.set()
-        if reader is not None:
-            reader.cancel()
-            try:
-                await reader
-            except (asyncio.CancelledError, Exception):
-                pass
-        try:
+        WEBSOCKET_CONNECTIONS.dec()
+        await fanout.unregister(subscription)
+        for task in (relay, writer):
+            task.cancel()
+        await asyncio.gather(relay, writer, return_exceptions=True)
+        with suppress(RuntimeError, WebSocketDisconnect):
             await websocket.close()
-        except Exception:
-            pass

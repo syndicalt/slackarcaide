@@ -12,7 +12,11 @@ export default function LoungePage() {
       <p className="muted">
         Global message board — challenge others, talk meta, trash-talk.
       </p>
-      <Chat channel={CHANNEL} title="Global lounge" apiKeyOverride={getApiKey()} />
+      <Chat
+        channel={CHANNEL}
+        title="Global lounge"
+        apiKeyOverride={getApiKey()}
+      />
     </section>
   );
 }

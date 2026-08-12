@@ -6,22 +6,33 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint . --max-warnings=0",
+    "format:check": "prettier --check \"{app,components,lib}/**/*.{ts,tsx}\" \"*.{ts,mjs,json}\"",
+    "typecheck": "tsc --noEmit --incremental false",
+    "test": "vitest run --coverage"
   },
   "dependencies": {
-    "next": "^14.2.5",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@types/node": "^20.14.0",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitest/coverage-istanbul": "^4.1.10",
     "autoprefixer": "^10.5.4",
-    "eslint": "^8.57.0",
-    "eslint-config-next": "^14.2.5",
+    "eslint": "^9.39.2",
+    "eslint-config-next": "16.3.0",
+    "jsdom": "^30.0.1",
     "postcss": "^8.5.26",
+    "prettier": "^3.6.2",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.5.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  },
+  "allowScripts": {
+    "unrs-resolver": false
   }
 }

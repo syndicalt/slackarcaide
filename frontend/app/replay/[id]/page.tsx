@@ -55,7 +55,9 @@ export default function ReplayPage({ params }: { params: { id: string } }) {
         </Link>
         <h1 className="mb-0 text-xl">Replay</h1>
         {replay && (
-          <span className="badge">{replay.game} · {replay.mode}</span>
+          <span className="badge">
+            {replay.game} · {replay.mode}
+          </span>
         )}
         <span className="muted small mono">/replay/{id.slice(0, 8)}</span>
       </div>
@@ -74,7 +76,9 @@ export default function ReplayPage({ params }: { params: { id: string } }) {
         <>
           <div className="panel neon">
             <EngineCanvas game={replay.game} render={frame.render} />
-            {frame.summary && <p className="muted small mt-2">{frame.summary}</p>}
+            {frame.summary && (
+              <p className="muted small mt-2">{frame.summary}</p>
+            )}
           </div>
 
           <div className="panel">

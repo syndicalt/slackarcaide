@@ -15,7 +15,23 @@ type Props = {
   apiKeyOverride?: string;
 };
 
-export default function Chat({ channel, title = "Channel", apiKeyOverride }: Props) {
+function mergeMessages(existing: Message[], incoming: Message[]): Message[] {
+  const byId = new Map(existing.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return [...byId.values()].sort((left, right) => {
+    const time =
+      Date.parse(left.created_at ?? "") - Date.parse(right.created_at ?? "");
+    return Number.isNaN(time) || time === 0
+      ? left.id.localeCompare(right.id)
+      : time;
+  });
+}
+
+export default function Chat({
+  channel,
+  title = "Channel",
+  apiKeyOverride,
+}: Props) {
   const apiKey = apiKeyOverride ?? getApiKey();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadError, setLoadError] = useState("");
@@ -45,7 +61,7 @@ export default function Chat({ channel, title = "Channel", apiKeyOverride }: Pro
         if (d.type === "message" && isMessage(d.data)) addMessage(d.data);
       }
     },
-    [addMessage]
+    [addMessage],
   );
 
   useRealtime([`messages:${channel}`], onRaw);
@@ -64,9 +80,11 @@ export default function Chat({ channel, title = "Channel", apiKeyOverride }: Pro
         query: { channel, limit: 100 },
       });
       const list = data?.messages ?? [];
-      seenRef.current = new Set(list.map((m) => m.id));
-      // backend returns newest-first; display oldest-first (newest by the input)
-      setMessages([...list].reverse());
+      setMessages((current) => {
+        const merged = mergeMessages(current, list);
+        seenRef.current = new Set(merged.map((message) => message.id));
+        return merged;
+      });
       setLoadError("");
     } catch (e) {
       setLoadError(errMsg(e));
@@ -80,7 +98,7 @@ export default function Chat({ channel, title = "Channel", apiKeyOverride }: Pro
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
+  }, [messages.length]);
 
   async function post(e: React.FormEvent) {
     e.preventDefault();
@@ -88,7 +106,7 @@ export default function Chat({ channel, title = "Channel", apiKeyOverride }: Pro
     setSending(true);
     setPostError("");
     try {
-      await apiPost<Message>(
+      const created = await apiPost<Message>(
         "/messages",
         {
           channel,
@@ -96,8 +114,9 @@ export default function Chat({ channel, title = "Channel", apiKeyOverride }: Pro
           tick_reference: tickRef ?? undefined,
           parent_id: replyTo?.id ?? undefined,
         },
-        { bearer: apiKey || undefined }
+        { bearer: apiKey || undefined },
       );
+      addMessage(created);
       setContent("");
       setReplyTo(null);
       setTickRef(null);
@@ -105,16 +124,14 @@ export default function Chat({ channel, title = "Channel", apiKeyOverride }: Pro
       setPostError(
         isUnauthorized(err)
           ? "Unauthorized (401). Register an agent to post, then reload."
-          : errMsg(err)
+          : errMsg(err),
       );
     } finally {
       setSending(false);
     }
   }
 
-  const quotes = replyTo
-    ? quoteIndex.get(replyTo.id) || replyTo
-    : null;
+  const quotes = replyTo ? quoteIndex.get(replyTo.id) || replyTo : null;
 
   return (
     <section className="arcade-panel lounge-chat flex flex-col">
@@ -146,7 +163,9 @@ export default function Chat({ channel, title = "Channel", apiKeyOverride }: Pro
                 </span>
                 <span className="flex items-center gap-2">
                   <span>
-                    {m.created_at ? new Date(m.created_at).toLocaleTimeString() : ""}
+                    {m.created_at
+                      ? new Date(m.created_at).toLocaleTimeString()
+                      : ""}
                   </span>
                   <button
                     type="button"
@@ -159,7 +178,8 @@ export default function Chat({ channel, title = "Channel", apiKeyOverride }: Pro
               </div>
               {parent && (
                 <div className="lounge-content muted">
-                  <em>{agentLabel(parent.author_id, names)}</em>: {parent.content}
+                  <em>{agentLabel(parent.author_id, names)}</em>:{" "}
+                  {parent.content}
                 </div>
               )}
               <div className="lounge-content">{m.content}</div>
@@ -176,9 +196,14 @@ export default function Chat({ channel, title = "Channel", apiKeyOverride }: Pro
           style={{ borderLeftColor: "var(--arcade-yellow)" }}
         >
           <div className="lounge-content muted">
-            Replying to <b>{agentLabel(quotes.author_id, names)}</b>: {quotes.content}
+            Replying to <b>{agentLabel(quotes.author_id, names)}</b>:{" "}
+            {quotes.content}
           </div>
-          <button type="button" className="ghost small" onClick={() => setReplyTo(null)}>
+          <button
+            type="button"
+            className="ghost small"
+            onClick={() => setReplyTo(null)}
+          >
             cancel
           </button>
         </div>
@@ -190,7 +215,9 @@ export default function Chat({ channel, title = "Channel", apiKeyOverride }: Pro
             type="number"
             placeholder="tick ref (optional)"
             value={tickRef ?? ""}
-            onChange={(e) => setTickRef(e.target.value === "" ? null : Number(e.target.value))}
+            onChange={(e) =>
+              setTickRef(e.target.value === "" ? null : Number(e.target.value))
+            }
             className="w-28"
             aria-label="tick reference"
           />
@@ -206,7 +233,11 @@ export default function Chat({ channel, title = "Channel", apiKeyOverride }: Pro
           <span className="small muted">
             {apiKey ? "Authenticated" : "No API key — posts will be 401"}
           </span>
-          <button type="submit" className="neon" disabled={sending || !content.trim()}>
+          <button
+            type="submit"
+            className="neon"
+            disabled={sending || !content.trim()}
+          >
             {sending ? "Posting…" : "Post"}
           </button>
         </div>
@@ -215,4 +246,3 @@ export default function Chat({ channel, title = "Channel", apiKeyOverride }: Pro
     </section>
   );
 }
-

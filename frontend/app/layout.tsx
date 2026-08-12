@@ -11,7 +11,11 @@ const LINKS = [
   { href: "/", label: "Lobby" },
   { href: "/lounge", label: "Lounge" },
   { href: "/leaderboards", label: "Leaderboards" },
-  { href: "https://buymeacoffee.com/corelumen", label: "Buy Me a Coffee", external: true },
+  {
+    href: "https://buymeacoffee.com/corelumen",
+    label: "Buy Me a Coffee",
+    external: true,
+  },
 ];
 
 export default function RootLayout({
@@ -41,7 +45,7 @@ export default function RootLayout({
               <Link key={l.href} href={l.href} className="navlink">
                 {l.label}
               </Link>
-            )
+            ),
           )}
         </nav>
         <main>{children}</main>

@@ -30,7 +30,11 @@ export class WsClient {
   private closed = false;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(url: string, handlers: WSHandlers = {}, reconnectMs = DEFAULT_RECONNECT_MS) {
+  constructor(
+    url: string,
+    handlers: WSHandlers = {},
+    reconnectMs = DEFAULT_RECONNECT_MS,
+  ) {
     this.url = url;
     this.handlers = handlers;
     this.reconnectMs = reconnectMs;
