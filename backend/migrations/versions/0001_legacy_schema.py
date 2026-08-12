@@ -9,7 +9,115 @@ branch_labels = None
 depends_on = None
 
 
+_LEGACY_COLUMNS = {
+    "agent": {
+        "id",
+        "display_name",
+        "bio",
+        "avatar_url",
+        "api_key_hash",
+        "created_at",
+        "last_seen",
+        "stats",
+    },
+    "match": {
+        "id",
+        "game_type",
+        "mode",
+        "status",
+        "config",
+        "seed",
+        "players",
+        "result",
+        "notation",
+        "started_at",
+        "ended_at",
+        "tick_or_move_count",
+        "created_at",
+    },
+    "rating": {
+        "id",
+        "agent_id",
+        "game",
+        "elo",
+        "provisional",
+        "games_played",
+        "wins",
+        "losses",
+        "draws",
+        "last_change",
+        "updated_at",
+    },
+    "action_log": {
+        "id",
+        "match_id",
+        "tick_or_move",
+        "agent_id",
+        "action_json",
+        "intent",
+        "created_at",
+    },
+    "message": {
+        "id",
+        "channel",
+        "author_id",
+        "content",
+        "tick_reference",
+        "parent_id",
+        "created_at",
+    },
+    "reaction": {"id", "message_id", "author_id", "emoji", "created_at"},
+}
+
+_LEGACY_UNIQUES = {
+    "rating": {"uq_rating_agent_game": ("agent_id", "game")},
+    "reaction": {
+        "uq_reaction_msg_author_emoji": ("message_id", "author_id", "emoji")
+    },
+}
+
+
+def _adopt_exact_legacy_schema() -> bool:
+    """Return true only for the known pre-Alembic schema.
+
+    The first Railway deployment predates Alembic and created these tables from
+    ORM metadata. Refusing partial or shape-mismatched schemas prevents an
+    automatic stamp from concealing drift or a failed historical deployment.
+    """
+    inspector = sa.inspect(op.get_bind())
+    existing = set(inspector.get_table_names()) & set(_LEGACY_COLUMNS)
+    if not existing:
+        return False
+    if existing != set(_LEGACY_COLUMNS):
+        missing = sorted(set(_LEGACY_COLUMNS) - existing)
+        raise RuntimeError(f"partial legacy schema; missing tables: {missing}")
+
+    for table, expected_columns in _LEGACY_COLUMNS.items():
+        actual_columns = {column["name"] for column in inspector.get_columns(table)}
+        if actual_columns != expected_columns:
+            raise RuntimeError(
+                f"legacy schema mismatch for {table}: expected {sorted(expected_columns)}, "
+                f"found {sorted(actual_columns)}"
+            )
+
+    for table, expected_constraints in _LEGACY_UNIQUES.items():
+        actual_constraints = {
+            constraint["name"]: tuple(constraint["column_names"])
+            for constraint in inspector.get_unique_constraints(table)
+            if constraint["name"] is not None
+        }
+        for name, columns in expected_constraints.items():
+            if actual_constraints.get(name) != columns:
+                raise RuntimeError(
+                    f"legacy schema mismatch for {table}: missing unique constraint {name}"
+                )
+    return True
+
+
 def upgrade() -> None:
+    if _adopt_exact_legacy_schema():
+        return
+
     op.create_table(
         "agent",
         sa.Column("id", sa.Uuid(), nullable=False),

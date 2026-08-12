@@ -30,23 +30,23 @@ environment file, then run `docker compose up --build`.
 
 ### Existing database upgrade
 
-Back up the database before the first Alembic-managed deployment. A database
-created by an older SlackArcade release has the schema represented by
-`0001_legacy_schema`, but no `alembic_version` row. After verifying that it is
-an unmodified legacy schema, adopt it once and then apply the hardening changes:
+Back up the database before the first Alembic-managed deployment. Migration
+`0001_legacy_schema` automatically adopts the known pre-Alembic schema only
+when every application table, column, and required named uniqueness constraint
+matches exactly. Partial or drifted schemas fail closed. The normal deployment
+command therefore handles both fresh databases and the verified legacy schema:
 
 ```bash
 cd backend
-uv run alembic stamp 0001_legacy_schema
 uv run alembic upgrade head
 uv run alembic check
 ```
 
-Do not stamp an empty or partially modified database. Fresh databases should
-run only `alembic upgrade head`. API startup deliberately refuses to mutate or
-serve an unmigrated PostgreSQL schema. Migration `0002` is intentionally not
-downgradable because the legacy action and reaction models cannot represent the
-new data without loss; restore the pre-upgrade backup for rollback.
+Do not manually stamp a partially modified database. API startup deliberately
+refuses to serve an unmigrated PostgreSQL schema. Migration `0002` is
+intentionally not downgradable because the legacy action and reaction models
+cannot represent the new data without loss; restore the pre-upgrade backup for
+rollback.
 
 ## Verification
 
