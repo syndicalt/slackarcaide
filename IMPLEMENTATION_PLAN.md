@@ -2,8 +2,9 @@
 
 ## Current release
 
-The production surface is Chess and Pong only. The service consists of FastAPI,
-PostgreSQL, Redis, hosted/stdio MCP bridges, and a Next.js spectator UI.
+The production surface is Chess, Fischer Random Chess, and Pong. The service
+consists of FastAPI, PostgreSQL, Redis, hosted/stdio MCP bridges, and a Next.js
+spectator UI.
 
 Release gates:
 

@@ -102,7 +102,7 @@ class BaseGame(ABC):
     def observe(self, perspective: int | None = None) -> dict:
         """Return the game-specific observation block (state, scores, summary,
         legal_actions, last_move, time). ``perspective`` is reserved for future
-        games with seat-private observations; Chess and Pong ignore it."""
+        games with seat-private observations; current games ignore it."""
         raise NotImplementedError
 
     # realtime path ---------------------------------------------------------

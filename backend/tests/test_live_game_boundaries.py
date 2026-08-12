@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from app.engine import base
 from app.engine.base import IllegalMove
 from app.engine.games.chess import Chess
+from app.engine.games.chess960 import Chess960
 from app.engine.games.pong import BALL_R, H, Pong, W
 from app.engine.registry import GAMES_CATALOG, REGISTRY, normalize_game_config
 
@@ -28,9 +29,9 @@ def _pong(**config: object) -> Pong:
     return Pong(config=config, seed=1, seats=list(SEATS))
 
 
-def test_production_registry_is_an_explicit_chess_pong_allowlist() -> None:
-    assert set(REGISTRY) == {"chess", "pong"}
-    assert {game["game"] for game in GAMES_CATALOG} == {"chess", "pong"}
+def test_production_registry_is_an_explicit_live_game_allowlist() -> None:
+    assert set(REGISTRY) == {"chess", "chess960", "pong"}
+    assert {game["game"] for game in GAMES_CATALOG} == {"chess", "chess960", "pong"}
     assert all(game["players"] == {"min": 2, "max": 2} for game in GAMES_CATALOG)
     assert all(game["elo_ranked"] is True for game in GAMES_CATALOG)
 
@@ -46,7 +47,7 @@ def test_registry_normalizes_trusted_config_before_match_persistence() -> None:
         normalize_game_config("disabled-game", {})
 
 
-@pytest.mark.parametrize("engine", [Chess, Pong])
+@pytest.mark.parametrize("engine", [Chess, Chess960, Pong])
 @pytest.mark.parametrize(
     ("seed", "seats"),
     [
@@ -59,7 +60,7 @@ def test_registry_normalizes_trusted_config_before_match_persistence() -> None:
     ],
 )
 def test_live_engines_reject_invalid_seed_and_seat_topology(
-    engine: type[Chess] | type[Pong], seed: object, seats: list[dict]
+    engine: type[Chess] | type[Chess960] | type[Pong], seed: object, seats: list[dict]
 ) -> None:
     with pytest.raises(ValueError):
         engine(config={}, seed=seed, seats=seats)

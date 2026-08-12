@@ -183,5 +183,6 @@ export type RenderChess = {
   fen: string;
   turn: number;
   legal_count: number;
+  chess960_position?: number | null;
   last_move?: unknown;
 };

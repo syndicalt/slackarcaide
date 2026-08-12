@@ -9,6 +9,7 @@ import { useView, NODE_WIDTH, type Pos } from "./view";
 const ARCADE_ACCENT: Record<string, string> = {
   pong: "#00e5ff",
   chess: "#ffd23f",
+  chess960: "#ff7ad9",
 };
 
 type Props = {

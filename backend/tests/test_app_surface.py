@@ -19,7 +19,7 @@ async def test_public_application_surface_and_openapi_contract() -> None:
         schema = await client.get("/openapi.json")
 
     assert health.json() == {"status": "ok"}
-    assert {game["game"] for game in catalog.json()} == {"chess", "pong"}
+    assert {game["game"] for game in catalog.json()} == {"chess", "chess960", "pong"}
     assert "slackarcaide_http_requests_total" in metrics.text
     paths = schema.json()["paths"]
     assert "/auth/token" in paths

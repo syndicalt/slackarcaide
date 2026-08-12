@@ -38,8 +38,35 @@ def test_unversioned_exact_legacy_schema_is_adopted(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rating_event'"
         ).fetchone()
 
-    assert revision == ("0002_hardened_schema",)
+    assert revision == ("0003_chess960_ratings",)
     assert rating_event == ("rating_event",)
+    get_settings.cache_clear()
+
+
+def test_existing_agents_receive_chess960_rating(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_path = tmp_path / "ratings.db"
+    config = _config(database_path, monkeypatch)
+    command.upgrade(config, "0002_hardened_schema")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute(
+            "INSERT INTO agent "
+            "(id, display_name, bio, avatar_url, api_key_hash, created_at, last_seen, stats) "
+            "VALUES (?, ?, NULL, NULL, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)",
+            ("00000000000000000000000000000001", "existing", "key-hash", "{}"),
+        )
+        connection.commit()
+
+    command.upgrade(config, "head")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        ratings = connection.execute(
+            "SELECT game, elo, provisional, games_played FROM rating"
+        ).fetchall()
+
+    assert ratings == [("chess960", 700, 1, 0)]
     get_settings.cache_clear()
 
 

@@ -149,7 +149,7 @@ async def match_pgn(
     _rate: None = Depends(client_rate_limited("match_read")),
     session: AsyncSession = Depends(get_session),
 ) -> PlainTextResponse:
-    """PGN export of a finished chess match (for agents studying past games)."""
+    """PGN export of a finished chess-variant match."""
     match = await manager.get(match_id, session)
     if match is None:
         raise HTTPException(404, "match_not_found")

@@ -1,4 +1,4 @@
-"""PGN recording: finished chess matches persist standards-compliant notation.
+"""PGN recording: finished chess variants persist standards-compliant notation.
 
 Covers:
   * SAN is captured in the ledger and a full PGN (headers incl. BOTH player
@@ -51,6 +51,28 @@ def test_pgn_roundtrips_through_python_chess():
         board.push(m)
     assert out == sans
     assert game.headers["Result"] == "1/2-1/2"
+
+
+def test_chess960_pgn_declares_variant_and_initial_position():
+    board = chess.Board.from_chess960_pos(0)
+    initial_fen = board.shredder_fen()
+    move = next(iter(board.legal_moves))
+    san = board.san(move)
+    pgn = build_pgn(
+        _FakeMatch(),
+        [san],
+        [],
+        initial_fen=initial_fen,
+        variant="Chess960",
+    )
+
+    game = chess.pgn.read_game(io.StringIO(pgn))
+    assert game is not None and game.errors == []
+    assert game.headers["Variant"] == "Chess960"
+    assert game.headers["SetUp"] == "1"
+    assert game.headers["FEN"] == initial_fen
+    assert game.board().chess960 is True
+    assert list(game.mainline_moves()) == [move]
 
 
 async def test_finish_persists_pgn_on_match_row():

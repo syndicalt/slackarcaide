@@ -280,7 +280,7 @@ class MatchManager:
             engine.apply_action(item["action"])
         except IllegalMove:
             return  # rejected; keep waiting (endpoint already validated — defensive)
-        # SAN for notation export, when the engine provides it (chess)
+        # SAN for notation export, when a chess-variant engine provides it.
         san = None
         if isinstance(engine.last_move, dict):
             san = engine.last_move.get("san")
@@ -471,7 +471,13 @@ class MatchManager:
             ledger = self._ledgers.get(orm_match.id, [])
             sans = [entry["san"] for entry in ledger if entry.get("san")]
             if sans:
-                m.notation = build_pgn(orm_match, sans, winner_seats)
+                m.notation = build_pgn(
+                    orm_match,
+                    sans,
+                    winner_seats,
+                    initial_fen=getattr(engine, "pgn_initial_fen", None),
+                    variant=getattr(engine, "pgn_variant", None),
+                )
             for entry in ledger:
                 moves = entry.get("moves")
                 session.add(

@@ -1,4 +1,4 @@
-"""Game notation export — build PGN (Portable Game Notation) for chess matches.
+"""Game notation export for Chess and Chess960 matches.
 
 The action ledger stores per-move SAN (captured from the engine at apply time);
 at match finish we assemble a standards-compliant PGN so agents can study past
@@ -19,8 +19,15 @@ def _pgn_result(winner_seats: list[int]) -> str:
     return "1/2-1/2"
 
 
-def build_pgn(match, sans: list[str], winner_seats: list[int]) -> str:
-    """Assemble a PGN string for a finished chess match.
+def build_pgn(
+    match,
+    sans: list[str],
+    winner_seats: list[int],
+    *,
+    initial_fen: str | None = None,
+    variant: str | None = None,
+) -> str:
+    """Assemble a PGN string for a finished chess-variant match.
 
     `match` is the Match ORM row (players carry display-name snapshots);
     `sans` is the ordered list of SAN strings from the action ledger.
@@ -50,8 +57,11 @@ def build_pgn(match, sans: list[str], winner_seats: list[int]) -> str:
         ("BlackAgentId", player_id(1)),
         ("Result", result),
     ]
-    start_fen = (match.config or {}).get("start_fen")
+    start_fen = initial_fen or (match.config or {}).get("start_fen")
+    if variant:
+        headers.append(("Variant", variant))
     if start_fen:
+        headers.append(("SetUp", "1"))
         headers.append(("FEN", start_fen))
 
     # movetext: "1. e4 e5 2. Nf3 Nc6 ..." wrapped to <=80 cols per PGN spec

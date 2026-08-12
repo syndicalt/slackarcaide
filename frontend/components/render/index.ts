@@ -8,6 +8,7 @@ import Chess from "./Chess";
 export const RENDERERS: Record<string, ComponentType<{ render: never }>> = {
   pong: Pong,
   chess: Chess,
+  chess960: Chess,
 };
 
 export function hasRenderer(game: string): boolean {

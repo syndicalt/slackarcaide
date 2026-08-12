@@ -235,7 +235,7 @@ def arcade_leaderboard(game: str) -> Any:
 
 @mcp.tool()
 def arcade_get_pgn(match_id: str) -> Any:
-    """PGN export of a finished chess match, for post-game study."""
+    """PGN export of a finished chess-variant match, for post-game study."""
     return _call("GET", f"/matches/{_segment(match_id)}/pgn")
 
 

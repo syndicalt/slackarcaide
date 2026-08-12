@@ -95,7 +95,7 @@ class Match(Base):
     seed: Mapped[int] = mapped_column(Integer, default=0)
     players: Mapped[list] = mapped_column(JSON, default=list)  # [{agent_id, seat, side, name}]
     result: Mapped[dict | None] = mapped_column(JSON, default=None)
-    notation: Mapped[str | None] = mapped_column(String, default=None)  # PGN for chess
+    notation: Mapped[str | None] = mapped_column(String, default=None)  # PGN for chess variants
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     tick_or_move_count: Mapped[int] = mapped_column(Integer, default=0)

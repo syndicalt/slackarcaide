@@ -66,6 +66,7 @@ class ChessConfig(BaseModel):
 class Chess(BaseGame):
     mode = "turnbased"
     name = "chess"
+    game_title = "Chess"
     CATALOG = {
         "title": "Chess",
         "min_players": 2,
@@ -86,6 +87,8 @@ class Chess(BaseGame):
             self.board = chess.Board(fen) if fen else chess.Board()
         except ValueError as exc:
             raise ValueError(f"invalid start_fen: {exc}") from exc
+        self.pgn_initial_fen = fen
+        self.pgn_variant: str | None = None
         self.move_count = 0
         self.last_move: dict | None = None
         if hasattr(self, "_clock_remaining_ms"):
@@ -204,16 +207,22 @@ class Chess(BaseGame):
             outcome = self.board.outcome(claim_draw=True)
             if self.last_move and self.last_move.get("event") == "resign":
                 resigned = self.last_move["seat"]
-                return f"Chess — player {resigned} resigns; player {1 - resigned} wins"
+                return f"{self.game_title} — player {resigned} resigns; player {1 - resigned} wins"
             if outcome is None:
-                return "Chess — over"
+                return f"{self.game_title} — over"
             if outcome.winner is None:
-                return f"Chess — draw ({outcome.termination.name.lower().replace('_', ' ')})"
+                return (
+                    f"{self.game_title} — draw "
+                    f"({outcome.termination.name.lower().replace('_', ' ')})"
+                )
             who = "White" if outcome.winner == chess.WHITE else "Black"
-            return f"Chess — {who} wins ({outcome.termination.name.lower().replace('_', ' ')})"
+            return (
+                f"{self.game_title} — {who} wins "
+                f"({outcome.termination.name.lower().replace('_', ' ')})"
+            )
         side = "White" if self.board.turn == chess.WHITE else "Black"
         check = " — check!" if self.board.is_check() else ""
-        return f"Chess — move {self.board.fullmove_number}; {side} to move{check}"
+        return f"{self.game_title} — move {self.board.fullmove_number}; {side} to move{check}"
 
     def observe(self, perspective: int | None = None) -> dict:
         return {

@@ -198,5 +198,5 @@ async def arcade_leaderboard(game: str, ctx: Context) -> Any:
 
 @mcp.tool()
 async def arcade_get_pgn(match_id: str, ctx: Context) -> Any:
-    """PGN export of a finished chess match, for post-game study."""
+    """PGN export of a finished chess-variant match, for post-game study."""
     return await _c("GET", f"/matches/{_segment(match_id)}/pgn", None, ctx, auth=False)

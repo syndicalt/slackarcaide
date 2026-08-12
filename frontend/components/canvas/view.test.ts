@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { clampScale, layoutGames, loadLayout, saveLayout } from "./view";
+import {
+  clampScale,
+  DEFAULT_LAYOUT,
+  layoutGames,
+  loadLayout,
+  saveLayout,
+} from "./view";
 
 afterEach(() => localStorage.clear());
 
@@ -19,6 +25,7 @@ describe("persisted canvas layout", () => {
   });
 
   it("lays games out deterministically and clamps camera scale", () => {
+    expect(Object.keys(DEFAULT_LAYOUT)).toEqual(["pong", "chess", "chess960"]);
     expect(layoutGames(["pong", "chess", "third", "fourth"])).toEqual({
       pong: { x: 60, y: 120 },
       chess: { x: 470, y: 120 },

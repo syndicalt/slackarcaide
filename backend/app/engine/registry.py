@@ -13,10 +13,12 @@ if TYPE_CHECKING:
     from app.engine.base import BaseGame
 
 from app.engine.games.chess import Chess
+from app.engine.games.chess960 import Chess960
 from app.engine.games.pong import Pong
 
 REGISTRY: dict[str, type[BaseGame]] = {
     Chess.name: Chess,
+    Chess960.name: Chess960,
     Pong.name: Pong,
 }
 
