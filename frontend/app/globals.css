@@ -83,7 +83,7 @@ nav.topnav .brand .brand-ai {
     -0.06em 0 0 color-mix(in srgb, var(--arcade-yellow) 56%, transparent);
 }
 
-nav.topnav a.navlink {
+nav.topnav .navlink {
   /* match the arcade page's neon-monospace tone (like .lounge-title/.catalog-title) */
   color: var(--arcade-cyan);
   font-family: var(--arcade-mono);
@@ -98,21 +98,27 @@ nav.topnav a.navlink {
   transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
 
-nav.topnav a.navlink:hover {
+nav.topnav .navlink:hover {
   color: #07020f;
   background: var(--arcade-cyan);
   text-shadow: none;
   box-shadow: 0 0 14px color-mix(in srgb, var(--arcade-cyan) 70%, transparent);
+  filter: none;
 }
 
-nav.topnav a.navicon {
+nav.topnav .navlink:focus-visible {
+  outline: 2px solid var(--arcade-yellow);
+  outline-offset: 2px;
+}
+
+nav.topnav .navicon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding-inline: 0.55rem;
 }
 
-nav.topnav a.navicon svg {
+nav.topnav .navicon svg {
   width: 1.15rem;
   height: 1.15rem;
   fill: none;
@@ -120,6 +126,178 @@ nav.topnav a.navicon svg {
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.agent-help {
+  position: relative;
+  display: flex;
+}
+
+nav.topnav .help-trigger {
+  min-width: 2.3rem;
+  min-height: 2rem;
+  background: transparent;
+  line-height: 1;
+}
+
+.agent-help-panel {
+  position: absolute;
+  top: calc(100% + 0.7rem);
+  right: 0;
+  width: min(32rem, calc(100vw - 1.5rem));
+  max-height: calc(100vh - 5.5rem);
+  overflow-y: auto;
+  padding: 1rem;
+  color: var(--text);
+  background:
+    linear-gradient(180deg, rgba(13, 4, 32, 0.98), rgba(8, 2, 20, 0.99)),
+    var(--arcade-soot);
+  border: 2px solid var(--arcade-magenta);
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--arcade-magenta) 50%, transparent),
+    0 0 28px color-mix(in srgb, var(--arcade-magenta) 38%, transparent),
+    0 16px 40px rgba(0, 0, 0, 0.72);
+}
+
+.agent-help-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--arcade-magenta) 38%, transparent);
+}
+
+.agent-help-kicker {
+  margin: 0 0 0.1rem;
+  color: var(--arcade-yellow);
+  font-family: var(--arcade-mono);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.agent-help-heading h2 {
+  margin: 0;
+  color: var(--arcade-cyan);
+  font-family: var(--arcade-mono);
+  font-size: 1.1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--arcade-cyan) 65%, transparent);
+}
+
+button.agent-help-close {
+  flex: 0 0 auto;
+  padding: 0.05rem 0.4rem;
+  color: var(--arcade-magenta);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+button.agent-help-close:hover,
+button.agent-help-close:focus-visible {
+  color: #07020f;
+  background: var(--arcade-magenta);
+  outline: none;
+  filter: none;
+  box-shadow: 0 0 12px
+    color-mix(in srgb, var(--arcade-magenta) 65%, transparent);
+}
+
+.agent-help-intro {
+  margin: 0.8rem 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.agent-help-prompt {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.7rem;
+  background: rgba(0, 0, 0, 0.42);
+  border: 1px solid color-mix(in srgb, var(--arcade-cyan) 42%, transparent);
+  border-left: 3px solid var(--arcade-cyan);
+  border-radius: 6px;
+}
+
+.agent-help-prompt span {
+  color: var(--arcade-green);
+  font-family: var(--arcade-mono);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.agent-help-prompt code {
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.agent-help-steps {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.85rem 0;
+  padding-left: 1.35rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.agent-help-steps li::marker {
+  color: var(--arcade-yellow);
+  font-family: var(--arcade-mono);
+  font-weight: 900;
+}
+
+.agent-help-steps strong {
+  color: var(--text);
+}
+
+.agent-help-panel code {
+  font-family: var(--arcade-mono);
+}
+
+.agent-help-steps code {
+  color: var(--arcade-cyan);
+  overflow-wrap: anywhere;
+}
+
+.agent-help-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid
+    color-mix(in srgb, var(--arcade-magenta) 28%, transparent);
+}
+
+.agent-help-links a {
+  padding: 0.35rem 0.55rem;
+  color: var(--arcade-cyan);
+  border: 1px solid color-mix(in srgb, var(--arcade-cyan) 50%, transparent);
+  border-radius: 5px;
+  font-family: var(--arcade-mono);
+  font-size: 0.7rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.agent-help-links a:hover,
+.agent-help-links a:focus-visible {
+  color: #07020f;
+  background: var(--arcade-cyan);
+  outline: none;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--arcade-cyan) 65%, transparent);
 }
 
 main {
@@ -327,6 +505,35 @@ button.danger {
 }
 
 @media (max-width: 640px) {
+  nav.topnav {
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 0.5rem 0.65rem;
+  }
+
+  nav.topnav .brand {
+    flex: 1 0 100%;
+    margin-right: 0;
+    text-align: center;
+  }
+
+  nav.topnav .navlink {
+    padding: 0.3rem 0.4rem;
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+  }
+
+  nav.topnav .navicon {
+    padding-inline: 0.4rem;
+  }
+
+  .agent-help-panel {
+    position: fixed;
+    top: 5.7rem;
+    right: 0.65rem;
+    max-height: calc(100vh - 6.4rem);
+  }
+
   main {
     padding: 1rem 0.9rem 2rem;
   }

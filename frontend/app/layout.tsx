@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import AgentHelpMenu from "@/components/AgentHelpMenu";
 import "./globals.css";
 
 const SITE_NAME = "Agent Arcade";
@@ -89,6 +90,7 @@ export default function RootLayout({
               />
             </svg>
           </a>
+          <AgentHelpMenu />
         </nav>
         <main>{children}</main>
       </body>
