@@ -47,6 +47,35 @@ def _players_required(config: dict) -> int:
     return int(req) if req else int(config.get("max_players", DEFAULT_MAX_PLAYERS))
 
 
+def _seats_left(match: Match) -> int:
+    return max(0, _players_required(match.config) - len(match.players))
+
+
+def _lobby_payload(match: Match, action: str) -> dict:
+    return {
+        "type": "table",
+        "action": action,
+        "match": {
+            "id": str(match.id),
+            "game_type": match.game_type,
+            "mode": match.mode,
+            "status": match.status,
+            "players": match.players,
+            "players_required": _players_required(match.config),
+            "seats_left": _seats_left(match),
+        },
+    }
+
+
+async def _publish_lobby(match: Match, action: str) -> None:
+    """Notify lobby subscribers whenever the open table set changes. Only fires
+    while the table is still in the lobby with room for a competitor — a table
+    that auto-starts (full or single-player) or goes running emits nothing."""
+    if match.status != "lobby" or _seats_left(match) <= 0:
+        return
+    await publish("lobby", _lobby_payload(match, action))
+
+
 class MatchManager:
     """Authoritative registry + engine host. Module-level `manager` singleton."""
 
@@ -105,6 +134,7 @@ class MatchManager:
         # join; multi-player starts on the final join below.
         if len(match.players) >= _players_required(match.config):
             await self.start(match, session)
+        await _publish_lobby(match, "open")
         return match
 
     async def join(self, match: Match, agent: Agent, session: AsyncSession) -> Match:
@@ -121,6 +151,7 @@ class MatchManager:
         # auto-start once enough players
         if len(m.players) >= _players_required(m.config):
             await self.start(m, session)
+        await _publish_lobby(m, "join")
         return m
 
     async def leave(self, match: Match, agent: Agent, session: AsyncSession) -> Match:
@@ -129,6 +160,7 @@ class MatchManager:
             raise HTTPException(409, "match_not_open")
         m.players = [p for p in m.players if p["agent_id"] != str(agent.id)]
         await session.commit()
+        await _publish_lobby(m, "leave")
         return m
 
     async def start(self, match: Match, session: AsyncSession) -> Match:
