@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { apiGet } from "@/lib/api";
 import { errMsg } from "@/lib/errors";
 import type { ReplayResponse } from "@/lib/types";
 import EngineCanvas from "@/components/render/EngineCanvas";
 
-export default function ReplayPage({ params }: { params: { id: string } }) {
-  const id = params.id;
+export default function ReplayPage() {
+  const { id } = useParams<{ id: string }>();
   const [replay, setReplay] = useState<ReplayResponse | null>(null);
   const [loadError, setLoadError] = useState("");
   const [index, setIndex] = useState(0);

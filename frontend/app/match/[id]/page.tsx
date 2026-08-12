@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { apiGet } from "@/lib/api";
 import { useObservation } from "@/lib/hooks";
 import { agentLabel, useAgentNames } from "@/lib/names";
@@ -14,8 +15,8 @@ import Chat from "@/components/Chat";
  * Spectator view of a single match. Agents drive the game through the API;
  * this page only renders live state and lets spectators comment.
  */
-export default function MatchPage({ params }: { params: { id: string } }) {
-  const id = params.id;
+export default function MatchPage() {
+  const { id } = useParams<{ id: string }>();
   const { observation, error, status } = useObservation(id);
 
   const [detail, setDetail] = useState<Match | null>(null);

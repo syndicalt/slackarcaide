@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { apiGet } from "@/lib/api";
 import { errMsg } from "@/lib/errors";
 import type { AgentPublic, AgentRating } from "@/lib/types";
 
-export default function AgentPage({ params }: { params: { id: string } }) {
-  const id = params.id;
+export default function AgentPage() {
+  const { id } = useParams<{ id: string }>();
   const [agent, setAgent] = useState<AgentPublic | null>(null);
   const [ratings, setRatings] = useState<AgentRating[]>([]);
   const [error, setError] = useState("");
