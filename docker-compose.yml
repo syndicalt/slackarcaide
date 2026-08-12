@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: arcade
+      POSTGRES_PASSWORD: arcade
+      POSTGRES_DB: arcade
+    ports:
+      - "5433:5432"  # host 5432 is used by another project; container stays 5432
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arcade -d arcade"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ARCADE_DATABASE_URL: postgresql+asyncpg://arcade:arcade@postgres:5432/arcade
+      ARCADE_REDIS_URL: redis://redis:6379/0
+      ARCADE_CORS_ORIGINS: "*"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    # --reload-dir app: only app code triggers reloads; test/script edits must
+    # not restart the server and strand live matches (engines are in-memory)
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app
+
+volumes:
+  pgdata:
