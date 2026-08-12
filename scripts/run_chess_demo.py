@@ -10,6 +10,7 @@ pushes, weighted randomly so games vary. Moves are paced for spectators.
 Usage:  python scripts/run_chess_demo.py [MOVE_DELAY_SECONDS]
 Env:    ARCADE_DEMO_BASE (default http://127.0.0.1:8098)
 """
+
 import json
 import os
 import random
@@ -17,14 +18,24 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 
 import chess
 
 BASE = os.environ.get("ARCADE_DEMO_BASE", "http://127.0.0.1:8098")
+_base_url = urlsplit(BASE)
+if _base_url.scheme not in {"http", "https"} or not _base_url.netloc:
+    raise SystemExit("ARCADE_DEMO_BASE must be an absolute HTTP(S) URL")
 MOVE_DELAY = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
 
-PIECE_VALUES = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3,
-                chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
+PIECE_VALUES = {
+    chess.PAWN: 1,
+    chess.KNIGHT: 3,
+    chess.BISHOP: 3,
+    chess.ROOK: 5,
+    chess.QUEEN: 9,
+    chess.KING: 0,
+}
 
 
 def req(method, path, body=None, token=None):
@@ -32,14 +43,16 @@ def req(method, path, body=None, token=None):
     if token:
         headers["Authorization"] = f"Bearer {token}"
     data = json.dumps(body).encode() if body is not None else None
-    r = urllib.request.Request(BASE + path, data=data, method=method, headers=headers)
+    r = urllib.request.Request(  # noqa: S310 - BASE is restricted to HTTP(S) below
+        BASE + path, data=data, method=method, headers=headers
+    )
     try:
-        with urllib.request.urlopen(r, timeout=10) as resp:
+        with urllib.request.urlopen(r, timeout=10) as resp:  # noqa: S310
             return json.load(resp)
     except urllib.error.HTTPError as e:
         try:
             return {"_http_error": e.code, **json.load(e)}
-        except Exception:
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
             return {"_http_error": e.code}
 
 
@@ -47,9 +60,9 @@ def choose_move(fen: str) -> dict:
     """1-ply heuristic over the authoritative FEN: mate > capture > check >
     pawn push, with random tie-breaking. Returns the API action dict."""
     board = chess.Board(fen)
-    best, best_score = [], -10**9
+    best, best_score = [], -(10**9)
     for move in board.legal_moves:
-        score = random.random()
+        score = random.random()  # noqa: S311 - randomized demo move selection
         if board.gives_check(move):
             score += 5
         if board.is_capture(move):
@@ -69,7 +82,7 @@ def choose_move(fen: str) -> dict:
             best, best_score = [move], score
         elif score == best_score:
             best.append(move)
-    move = random.choice(best)
+    move = random.choice(best)  # noqa: S311 - randomized demo move selection
     return {
         "from": chess.square_name(move.from_square),
         "to": chess.square_name(move.to_square),
@@ -84,7 +97,7 @@ def main():
     key_a, key_b = ra["api_key"], rb["api_key"]
     print(f"registered Kasparov-{ts} (white) / DeepBlue-{ts} (black)")
 
-    m = req("POST", "/matches", {"game_type": "chess", "mode": "turnbased", "config": {}}, key_a)
+    m = req("POST", "/matches", {"game_type": "chess"}, key_a)
     if "_http_error" in m:
         raise SystemExit(f"create failed: {m}")
     mid = m["id"]
@@ -112,14 +125,22 @@ def main():
         if "_http_error" in r:
             time.sleep(0.3)
             continue
-        lm = (r.get("last_move") or {})
-        print(f"move {st.get('move_number')}: {names[seat]} plays {lm.get('san', action)}"
-              f"{' — ' + r['summary'] if st.get('check') else ''}")
+        lm = r.get("last_move") or {}
+        print(
+            f"move {st.get('move_number')}: {names[seat]} plays {lm.get('san', action)}"
+            f"{' — ' + r['summary'] if st.get('check') else ''}"
+        )
         time.sleep(MOVE_DELAY)
 
     fin = req("GET", f"/matches/{mid}")
     print("=== finished ===")
-    print(json.dumps({"status": fin.get("status"), "result": fin.get("result")}, indent=2, default=str)[:400])
+    print(
+        json.dumps(
+            {"status": fin.get("status"), "result": fin.get("result")},
+            indent=2,
+            default=str,
+        )[:400]
+    )
     print(f"match page: http://127.0.0.1:3000/match/{mid}")
 
 

@@ -395,15 +395,6 @@ button.danger {
   z-index: 5;
 }
 
-/* Non-focus cabinets: kept on the scene but fully inert + desaturated so only
-   the active game reads as live. */
-.canvas-node.disabled {
-  opacity: 0.45;
-  filter: grayscale(1) saturate(0.35);
-  pointer-events: none;
-  cursor: default;
-}
-
 .canvas-grip {
   display: flex;
   align-items: center;
@@ -637,12 +628,6 @@ button.danger {
   color: #fff;
   text-shadow: 0 0 8px color-mix(in srgb, var(--arcade-magenta) 65%, transparent);
   box-shadow: inset 3px 0 0 var(--arcade-magenta);
-}
-
-.catalog-row.disabled {
-  opacity: 0.42;
-  filter: grayscale(1);
-  cursor: not-allowed;
 }
 
 .catalog-count {

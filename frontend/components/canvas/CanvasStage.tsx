@@ -10,7 +10,11 @@ import {
   type CanvasView,
 } from "./view";
 
-export default function CanvasStage({ children }: { children: React.ReactNode }) {
+export default function CanvasStage({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [view, setView] = useState<CanvasView>(() => ({
     x: 0,
     y: 0,
@@ -25,6 +29,8 @@ export default function CanvasStage({ children }: { children: React.ReactNode })
     vx: number;
     vy: number;
   } | null>(null);
+  const panFrameRef = useRef<number | null>(null);
+  const pendingPointRef = useRef<{ x: number; y: number } | null>(null);
 
   // Start camera: nudge the grid right of the catalog menu (col1 clear of the
   // panel), vertically centered. Runs client-side only; deterministic.
@@ -73,23 +79,39 @@ export default function CanvasStage({ children }: { children: React.ReactNode })
       vx: view.x,
       vy: view.y,
     };
+    e.currentTarget.setPointerCapture(e.pointerId);
     setPanning(true);
   };
 
   const onBgPointerMove = (e: React.PointerEvent) => {
     const p = panRef.current;
     if (!p || !p.active) return;
-    setView((v) => ({
-      ...v,
+    pendingPointRef.current = {
       x: p.vx + (e.clientX - p.sx),
       y: p.vy + (e.clientY - p.sy),
-    }));
+    };
+    if (panFrameRef.current === null) {
+      panFrameRef.current = requestAnimationFrame(() => {
+        panFrameRef.current = null;
+        const point = pendingPointRef.current;
+        if (point) setView((current) => ({ ...current, ...point }));
+      });
+    }
   };
 
   const stopPan = () => {
     panRef.current = null;
+    pendingPointRef.current = null;
     setPanning(false);
   };
+
+  useEffect(
+    () => () => {
+      if (panFrameRef.current !== null)
+        cancelAnimationFrame(panFrameRef.current);
+    },
+    [],
+  );
 
   const zoomBy = (factor: number) => {
     const el = viewportRef.current;
@@ -145,7 +167,12 @@ export default function CanvasStage({ children }: { children: React.ReactNode })
           >
             −
           </button>
-          <button type="button" className="ghost" onClick={resetView} aria-label="Reset view">
+          <button
+            type="button"
+            className="ghost"
+            onClick={resetView}
+            aria-label="Reset view"
+          >
             reset
           </button>
           <button

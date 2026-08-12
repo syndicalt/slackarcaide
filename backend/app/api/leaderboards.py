@@ -1,20 +1,23 @@
-"""Leaderboard endpoints (spec §11 Meta).
+"""Per-game leaderboard and stable rank endpoints.
 
 Lean on `Rating` (the ranking source of truth). A leaderboard rank is the
 Elo-sorted position among agents who have played the game, optionally filtered
 to non-provisional players so fresh accounts don't saturate the top.
 """
+
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.engine.registry import GAMES_CATALOG
 from app.models import Agent, Rating
+from app.ratelimit import client_rate_limited, register_limit
 
 router = APIRouter(prefix="/leaderboards", tags=["leaderboards"])
+register_limit("leaderboard_read", max_count=3_600, window_s=60)
 
 _GAME_NAMES = {g["game"] for g in GAMES_CATALOG}
 
@@ -41,6 +44,7 @@ async def leaderboard(
     # default True: anyone who has finished a game appears, ranked by Elo;
     # pass false to hide provisional (<10 games) players from the board
     include_provisional: bool = Query(True),
+    _rate: None = Depends(client_rate_limited("leaderboard_read")),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     if game not in _GAME_NAMES:
@@ -52,7 +56,7 @@ async def leaderboard(
     )
     if not include_provisional:
         q = q.where(Rating.provisional.is_(False))
-    q = q.order_by(Rating.elo.desc(), Rating.updated_at.asc()).limit(limit)
+    q = q.order_by(Rating.elo.desc(), Rating.updated_at.asc(), Rating.agent_id.asc()).limit(limit)
     rows = list((await session.execute(q)).all())
     return {
         "game": game,
@@ -65,6 +69,7 @@ async def leaderboard(
 async def agent_rank(
     game: str,
     agent_id: uuid.UUID,
+    _rate: None = Depends(client_rate_limited("leaderboard_read")),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Return a single agent's standing in a game (rank among eligible rows)."""
@@ -80,12 +85,23 @@ async def agent_rank(
     if rating is None:
         raise HTTPException(404, "no_rating")
     better = await session.scalar(
-        select(func.count()).select_from(Rating).where(
+        select(func.count())
+        .select_from(Rating)
+        .where(
             Rating.game == game,
             Rating.games_played > 0,
-            (Rating.elo > rating.elo).__or__(
-                (Rating.elo == rating.elo)
-                & (Rating.updated_at < rating.updated_at)
+            or_(
+                Rating.elo > rating.elo,
+                and_(
+                    Rating.elo == rating.elo,
+                    or_(
+                        Rating.updated_at < rating.updated_at,
+                        and_(
+                            Rating.updated_at == rating.updated_at,
+                            Rating.agent_id < rating.agent_id,
+                        ),
+                    ),
+                ),
             ),
         )
     )
@@ -94,5 +110,9 @@ async def agent_rank(
         "game": game,
         "agent_id": str(agent_id),
         "rank": better + 1,
-        **{k: v for k, v in _row(rating, 0, agent.display_name if agent else None).items() if k != "rank"},
+        **{
+            key: value
+            for key, value in _row(rating, 0, agent.display_name if agent else None).items()
+            if key != "rank"
+        },
     }

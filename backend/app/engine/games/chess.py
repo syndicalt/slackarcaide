@@ -1,4 +1,4 @@
-"""Chess — 2-player turn-based engine (spec §8.2).
+"""Two-player turn-based Chess engine backed by python-chess.
 
 Rules are delegated to `python-chess` (perft-validated against reference move
 generators), so the game is exactly FIDE chess: full legal move generation
@@ -21,11 +21,13 @@ Deterministic given (config, seed, seats): no randomness is used during play.
 Optional config ``start_fen`` sets a custom starting position (testing,
 variants, puzzles); seat 0 still maps to White regardless of side to move.
 """
+
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import chess
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.engine.base import BaseGame, IllegalMove
 
@@ -36,6 +38,29 @@ _PIECE_VALUES = {
     chess.ROOK: 5,
     chess.QUEEN: 9,
 }
+
+
+class ChessTimeControl(BaseModel):
+    """Admin-controlled, bounded Fischer clock settings."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    base_sec: int = Field(default=600, ge=1, le=86_400)
+    increment_sec: int = Field(default=5, ge=0, le=3_600)
+    enabled: bool = True
+
+
+class ChessConfig(BaseModel):
+    """Validated configuration accepted by the Chess engine host."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    players_required: Literal[2] = 2
+    max_players: Literal[2] = 2
+    ranked: bool = True
+    time_control: ChessTimeControl = Field(default_factory=ChessTimeControl)
+    start_fen: str | None = Field(default=None, max_length=128)
+    seed: int | None = Field(default=None, ge=0, le=2**63 - 1)
 
 
 class Chess(BaseGame):
@@ -49,15 +74,13 @@ class Chess(BaseGame):
         "elo_ranked": True,
         "blurb": "Full FIDE rules chess. UCI-style moves.",
     }
-    CONFIG_DEFAULTS = {
-        "players": 2,
-        "players_before_start": 2,
-        "time_control": {"base_sec": 600, "increment_sec": 5, "enabled": True},
-        "start_fen": None,
-    }
+    CONFIG_MODEL = ChessConfig
+    CONFIG_DEFAULTS = ChessConfig().model_dump(mode="python")
 
     # ---- state -----------------------------------------------------------
     def reset(self) -> None:
+        self._terminal = False
+        self._winner = None
         fen = self.config.get("start_fen")
         try:
             self.board = chess.Board(fen) if fen else chess.Board()
@@ -65,6 +88,8 @@ class Chess(BaseGame):
             raise ValueError(f"invalid start_fen: {exc}") from exc
         self.move_count = 0
         self.last_move: dict | None = None
+        if hasattr(self, "_clock_remaining_ms"):
+            self._initialize_clock()
 
     # ---- turn-based ------------------------------------------------------
     def current_seat(self) -> int:
@@ -86,10 +111,16 @@ class Chess(BaseGame):
 
     def apply_action(self, action: Any) -> None:
         if not isinstance(action, dict):
-            raise IllegalMove("invalid_action", "action must be {'from','to','promotion'} or {'resign': true}")
+            raise IllegalMove(
+                "invalid_action",
+                "action must be {'from','to','promotion'} or {'resign': true}",
+            )
         if self.is_terminal():
             raise IllegalMove("game_over", "game already ended")
         seat = self.current_seat()
+        remaining = self.clock_ms(seat)
+        if remaining is not None and remaining <= 0:
+            raise IllegalMove("clock_expired", "clock expired before action")
 
         if action.get("resign") is True:
             self._note_move(seat)
@@ -108,7 +139,7 @@ class Chess(BaseGame):
         try:
             move = chess.Move.from_uci(uci)
         except ValueError:
-            raise IllegalMove("invalid_square", f"bad square in '{uci}'")
+            raise IllegalMove("invalid_square", f"bad square in '{uci}'") from None
 
         if move not in self.board.legal_moves:
             if promo is None:
@@ -148,7 +179,7 @@ class Chess(BaseGame):
     # ---- shared -----------------------------------------------------------
     def _material(self) -> dict:
         white = black = 0
-        for _, piece in self.board.piece_map().items():
+        for piece in self.board.piece_map().values():
             value = _PIECE_VALUES.get(piece.piece_type, 0)  # kings: 0
             if piece.color == chess.WHITE:
                 white += value
@@ -172,7 +203,8 @@ class Chess(BaseGame):
         if self.is_terminal():
             outcome = self.board.outcome(claim_draw=True)
             if self.last_move and self.last_move.get("event") == "resign":
-                return f"Chess — player {self.last_move['seat']} resigns; player {1 - self.last_move['seat']} wins"
+                resigned = self.last_move["seat"]
+                return f"Chess — player {resigned} resigns; player {1 - resigned} wins"
             if outcome is None:
                 return "Chess — over"
             if outcome.winner is None:
@@ -191,12 +223,15 @@ class Chess(BaseGame):
                 "check": self.board.is_check(),
                 "move_number": self.board.fullmove_number,
                 "castling": self.board.castling_xfen(),
-                "ep_square": (chess.square_name(self.board.ep_square)
-                              if self.board.ep_square is not None else None),
+                "ep_square": (
+                    chess.square_name(self.board.ep_square)
+                    if self.board.ep_square is not None
+                    else None
+                ),
             },
             "legal_actions": self.get_legal_actions(self.current_seat()),
             "scores": self.get_scores(),
             "summary": self.summary(),
             "last_move": self.last_move,
-            "time": None,
+            "time": self.clock_state(),
         }

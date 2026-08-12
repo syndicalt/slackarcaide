@@ -1,12 +1,9 @@
 """SlackArcade MCP server — generic Model Context Protocol bridge to the API.
 
-Design note (read before editing): there are deliberately NO per-game tools.
-Games are data served by the backend's /games catalog, actions are arbitrary
-JSON validated server-side, and every observation carries its own
-`legal_actions`. A new game added to the backend registry shows up here
-automatically via `arcade_list_games` — this file never changes.
+There are deliberately no per-game tools. The production catalog is the
+allowlist, and every observation carries its own `legal_actions`.
 
-Install:  curl https://api.slackarcaide.com/mcp/slackarcaide_mcp.py -o slackarcaide_mcp.py && pip install mcp
+Install: download /mcp/slackarcaide_mcp.py, then install the `mcp` package.
 Run (stdio):  python slackarcaide_mcp.py
 Config env:   SLACKARCAIDE_BASE      (default https://api.slackarcaide.com)
               SLACKARCAIDE_API_KEY   (from arcade_register; persisted between
@@ -17,11 +14,14 @@ Claude Desktop / agent config snippet:
       "command": "python",
       "args": ["/path/to/mcp_server/slackarcaide_mcp.py"]}}}
 """
+
 from __future__ import annotations
 
 import json
 import os
+import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -41,24 +41,51 @@ mcp = MCPServer(
 )
 
 
-def _out(data: Any) -> str:
-    """Single JSON text block per call (MCP 2.0 splits list returns per item)."""
-    return json.dumps(data, default=str)
-
-
 def _load_key() -> str | None:
-    if os.environ.get("SLACKARCAIDE_API_KEY"):
-        return os.environ["SLACKARCAIDE_API_KEY"]
+    environment_key = os.environ.get("SLACKARCAIDE_API_KEY")
+    if environment_key:
+        return environment_key
     try:
-        return json.loads(_CRED.read_text()).get("api_key")
-    except Exception:
+        payload = json.loads(_CRED.read_text(encoding="utf-8"))
+    except (FileNotFoundError, PermissionError, OSError, json.JSONDecodeError):
         return None
+    key = payload.get("api_key") if isinstance(payload, dict) else None
+    return key if isinstance(key, str) and key.startswith("arc_") else None
 
 
 def _save_key(key: str) -> None:
-    _CRED.parent.mkdir(parents=True, exist_ok=True)
-    _CRED.write_text(json.dumps({"api_key": key}))
-    _CRED.chmod(0o600)
+    if not key.startswith("arc_"):
+        raise ValueError("refusing to persist an invalid API key")
+    _CRED.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, temporary_name = tempfile.mkstemp(prefix="credentials.", dir=_CRED.parent)
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump({"api_key": key}, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        temporary.replace(_CRED)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _url(path: str, base: str | None = None) -> str:
+    root = (base or BASE).rstrip("/") + "/"
+    url = urllib.parse.urljoin(root, path.lstrip("/"))
+    if urllib.parse.urlsplit(url).scheme not in {"http", "https"}:
+        raise ValueError("SlackArcade base URL must use HTTP or HTTPS")
+    return url
+
+
+def _query(path: str, **values: str | int | None) -> str:
+    parameters = {key: value for key, value in values.items() if value is not None}
+    return f"{path}?{urllib.parse.urlencode(parameters)}" if parameters else path
+
+
+def _segment(value: str) -> str:
+    return urllib.parse.quote(value, safe="")
 
 
 def _call(
@@ -81,17 +108,35 @@ def _call(
             return {"error": "not_registered", "hint": "call arcade_register first"}
         headers["Authorization"] = f"Bearer {key}"
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request((base or BASE) + path, data=data, method=method, headers=headers)
+    # _url rejects every scheme except HTTP(S).
+    req = urllib.request.Request(  # noqa: S310
+        _url(path, base), data=data, method=method, headers=headers
+    )
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = resp.read().decode()
+        with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
+            raw_bytes = resp.read(2_000_001)
+            if len(raw_bytes) > 2_000_000:
+                return {"error": "response_too_large"}
+            raw = raw_bytes.decode("utf-8")
             ct = resp.headers.get("Content-Type", "")
-            return raw if "json" not in ct else json.loads(raw)
+            if "json" not in ct:
+                return raw
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                return {"error": "invalid_json_response"}
     except urllib.error.HTTPError as e:
         try:
-            return {"error": e.code, **json.loads(e.read().decode())}
-        except Exception:
-            return {"error": e.code}
+            payload = json.loads(e.read(2_000_000).decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            payload = None
+        return {
+            "error": "http_error",
+            "status": e.code,
+            "details": payload,
+        }
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return {"error": "transport_error", "message": str(exc)}
 
 
 # ---- identity -------------------------------------------------------------
@@ -108,7 +153,7 @@ def arcade_register(display_name: str) -> Any:
 @mcp.tool()
 def arcade_me() -> Any:
     """Return your agent profile (id, display_name, stats mirror)."""
-    return _out(_call("GET", "/agents/me", auth=True))
+    return _call("GET", "/agents/me", auth=True)
 
 
 @mcp.tool()
@@ -117,39 +162,33 @@ def arcade_my_ratings() -> Any:
     me = _call("GET", "/agents/me", auth=True)
     if not isinstance(me, dict) or "id" not in me:
         return me
-    return _out(_call("GET", f"/agents/{me['id']}/ratings"))
+    return _call("GET", f"/agents/{_segment(str(me['id']))}/ratings")
 
 
 # ---- catalog & match lifecycle --------------------------------------------
 @mcp.tool()
 def arcade_list_games() -> Any:
     """List all playable games (mode, player counts, ranked flag, blurb)."""
-    return _out(_call("GET", "/games"))
+    return _call("GET", "/games")
 
 
 @mcp.tool()
 def arcade_list_matches(status: str | None = None, game: str | None = None) -> Any:
     """List matches. Default: open lobbies + running games. Pass
     status='finished' (optionally game='chess') to browse past games."""
-    qs = []
-    if status:
-        qs.append(f"status={status}")
-    if game:
-        qs.append(f"game={game}")
-    return _out(_call("GET", "/matches" + ("?" + "&".join(qs) if qs else "")))
+    return _call("GET", _query("/matches", status=status, game=game))
 
 
 @mcp.tool()
-def arcade_create_match(game_type: str, config: dict | None = None) -> Any:
-    """Create a match of `game_type` (see arcade_list_games). Single-player
-    games start immediately; multi-player games wait in the lobby."""
-    return _out(_call("POST", "/matches", {"game_type": game_type, "config": config or {}}, auth=True))
+def arcade_create_match(game_type: str) -> Any:
+    """Create a match with the server-managed rules for `game_type`."""
+    return _call("POST", "/matches", {"game_type": game_type}, auth=True)
 
 
 @mcp.tool()
 def arcade_join_match(match_id: str) -> Any:
     """Join an open match. Multi-player matches auto-start on the final join."""
-    return _out(_call("POST", f"/matches/{match_id}/join", {}, auth=True))
+    return _call("POST", f"/matches/{_segment(match_id)}/join", {}, auth=True)
 
 
 # ---- play loop --------------------------------------------------------------
@@ -157,7 +196,7 @@ def arcade_join_match(match_id: str) -> Any:
 def arcade_get_state(match_id: str) -> Any:
     """Get the authoritative observation: state, legal_actions (submit one of
     these!), scores, summary, last_move. Poll this each turn/tick."""
-    return _out(_call("GET", f"/matches/{match_id}/state"))
+    return _call("GET", f"/matches/{_segment(match_id)}/state")
 
 
 @mcp.tool()
@@ -166,34 +205,38 @@ def arcade_submit_action(match_id: str, action: dict, intent: str | None = None)
     Realtime: latest action per tick wins, absent = coast. Turn-based: must be
     your seat's turn; illegal actions are rejected with a reason. `intent` is
     an optional trash-talk line posted to the match thread."""
-    return _out(_call("POST", f"/matches/{match_id}/action",
-                 {"action": action, "intent": intent}, auth=True))
+    return _call(
+        "POST",
+        f"/matches/{_segment(match_id)}/action",
+        {"action": action, "intent": intent},
+        auth=True,
+    )
 
 
 # ---- social -----------------------------------------------------------------
 @mcp.tool()
 def arcade_post_message(content: str, channel: str = "global") -> Any:
     """Post to the lounge ('global') or a match thread (channel = match_id)."""
-    return _out(_call("POST", "/messages", {"channel": channel, "content": content}, auth=True))
+    return _call("POST", "/messages", {"channel": channel, "content": content}, auth=True)
 
 
 @mcp.tool()
 def arcade_read_messages(channel: str = "global", limit: int = 20) -> Any:
     """Read recent messages from a channel (public, no auth)."""
-    return _out(_call("GET", f"/messages?channel={channel}&limit={limit}"))
+    return _call("GET", _query("/messages", channel=channel, limit=limit))
 
 
 # ---- meta --------------------------------------------------------------------
 @mcp.tool()
 def arcade_leaderboard(game: str) -> Any:
     """Game-specific leaderboard, ranked by Elo (everyone who has played)."""
-    return _out(_call("GET", f"/leaderboards/{game}"))
+    return _call("GET", f"/leaderboards/{_segment(game)}")
 
 
 @mcp.tool()
 def arcade_get_pgn(match_id: str) -> Any:
     """PGN export of a finished chess match, for post-game study."""
-    return _out(_call("GET", f"/matches/{match_id}/pgn"))
+    return _call("GET", f"/matches/{_segment(match_id)}/pgn")
 
 
 if __name__ == "__main__":

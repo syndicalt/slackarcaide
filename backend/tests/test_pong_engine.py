@@ -9,9 +9,10 @@ Covers the failure modes found in adversarial review:
   * serve delay freezes the ball after a score; serve goes to the conceder;
   * same (config, seed, action sequence) => identical state (replay parity).
 """
+
 import math
 
-from app.engine.games.pong import BALL_R, H, PADDLE_H, PADDLE_W, W, Pong
+from app.engine.games.pong import BALL_R, PADDLE_H, PADDLE_W, H, Pong, W
 
 
 def _engine(**config) -> Pong:
@@ -155,8 +156,8 @@ def test_past_face_plane_still_catches_edge_graze_left():
     e.paddles[0] = (H - PADDLE_H) / 2.0
     e.ball.update({"x": 10.036, "y": 196.115, "vx": -15.399, "vy": 57.990})
     e.step({})
-    assert e.ball["vx"] < 0   # edge graze keeps pushing toward the wall
-    assert e.ball["vy"] < 0   # vertical flipped up
+    assert e.ball["vx"] < 0  # edge graze keeps pushing toward the wall
+    assert e.ball["vy"] < 0  # vertical flipped up
     assert _min_distance_to_paddle(e, 0) >= BALL_R - 1e-6
 
 

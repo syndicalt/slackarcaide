@@ -6,6 +6,7 @@ queen-default convenience), castling, en passant, check/checkmate, stalemate,
 insufficient material, repetition/fifty-move draws, resignation, and the
 ratings draw path (regression: drawn ranked matches used to crash _finish).
 """
+
 import os
 
 os.environ.setdefault("ARCADE_DATABASE_URL", "sqlite+aiosqlite:///:memory:")

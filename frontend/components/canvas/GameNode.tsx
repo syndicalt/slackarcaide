@@ -5,21 +5,10 @@ import Link from "next/link";
 import type { GameInfo, Match } from "@/lib/types";
 import { useView, NODE_WIDTH, type Pos } from "./view";
 
-/**
- * One neon accent per game, so each cabinet reads distinctly against the
- * arcade backdrop (palette mirrors the background art: cyan/magenta/yellow,
- * green/orange/red, violet/teal/gold).
- */
+/** Neon accent for each production game. */
 const ARCADE_ACCENT: Record<string, string> = {
   pong: "#00e5ff",
-  connect_four: "#ffe600",
-  snake: "#45ff6b",
-  breakout: "#ff3b53",
-  tetris: "#ff2ec4",
-  asteroids: "#9b6bff",
   chess: "#ffd23f",
-  checkers: "#ff9a2e",
-  go: "#22ffd1",
 };
 
 type Props = {
@@ -27,8 +16,6 @@ type Props = {
   matches: Match[];
   /** world position passed in from the page so drags have a live starting point */
   pos: Pos;
-  /** inferred — non-focus game: cabinet stays visible but is dimmed/inert */
-  disabled?: boolean;
   /** true when the catalog filter shows this game's table cards */
   filtered: boolean;
   selected: boolean;
@@ -41,7 +28,6 @@ export default function GameNode({
   game,
   matches,
   pos,
-  disabled = false,
   filtered,
   selected,
   onSelect,
@@ -53,10 +39,13 @@ export default function GameNode({
   const [dragging, setDragging] = useState(false);
 
   const onGripDown = (e: React.PointerEvent) => {
-    if (disabled) return;
     e.stopPropagation();
     setDragging(true);
-    dragRef.current = { sx: e.clientX, sy: e.clientY, start: { x: pos.x, y: pos.y } };
+    dragRef.current = {
+      sx: e.clientX,
+      sy: e.clientY,
+      start: { x: pos.x, y: pos.y },
+    };
     // Capture so pointerup/move continue to arrive at the grip while dragging.
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
   };
@@ -82,7 +71,7 @@ export default function GameNode({
   return (
     <div
       data-node
-      className={`canvas-node${selected ? " selected" : ""}${disabled ? " disabled" : ""}`}
+      className={`canvas-node${selected ? " selected" : ""}`}
       style={
         {
           left: pos.x,
@@ -92,7 +81,6 @@ export default function GameNode({
         } as CSSProperties
       }
       onPointerDown={(e) => {
-        if (disabled) return;
         if ((e.target as HTMLElement).closest("a")) return;
         e.stopPropagation();
         onSelect();
@@ -116,9 +104,7 @@ export default function GameNode({
       </div>
 
       <div className="canvas-tables">
-        {disabled ? (
-          <div className="small muted">disabled</div>
-        ) : filtered ? (
+        {filtered ? (
           matches.length === 0 ? (
             <div className="small muted">No open tables</div>
           ) : (
@@ -131,7 +117,8 @@ export default function GameNode({
                       <span className={`badge ${m.status}`}>{m.status}</span>
                     </div>
                     <div className="muted small mono">
-                      players {m.players.length} · mode {m.mode} · {m.id.slice(0, 8)}
+                      players {m.players.length} · mode {m.mode} ·{" "}
+                      {m.id.slice(0, 8)}
                     </div>
                   </div>
                   <Link href={`/match/${m.id}`} className="canvas-watch">

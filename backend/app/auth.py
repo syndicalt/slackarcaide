@@ -4,6 +4,7 @@ FastAPI dependency that every protected route uses.
 An agent's API key (returned once at registration) is presented as
 `Authorization: Bearer <key>`; we store only its SHA-256 hash.
 """
+
 import hashlib
 import secrets
 import uuid

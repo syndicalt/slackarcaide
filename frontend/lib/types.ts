@@ -68,7 +68,7 @@ export type Match = {
 export type MatchListResponse = { matches: Match[] };
 
 // ---------------------------------------------------------------------------
-// Observation (spec §4.4 + manager.observation)
+// Shared spectator observation returned by the match manager.
 // ---------------------------------------------------------------------------
 
 export type Observation = {
@@ -179,69 +179,9 @@ export type RenderPong = {
   scores: [number, number];
 };
 
-export type RenderSnake = {
-  w: number;
-  h: number;
-  snakes: { seat: number; segments: [number, number][]; alive: boolean }[];
-  food: [number, number] | null;
-  scores: Record<string, number>;
-};
-
-export type RenderBreakout = {
-  w: number;
-  h: number;
-  paddle: { x: number; w: number };
-  ball: { x: number; y: number; dx: number; dy: number };
-  bricks: [number, number, string][]; // [row, col, color]
-  score: number;
-  lives: number;
-};
-
-export type RenderTetris = {
-  w: number;
-  h: number;
-  board: (number | null)[][];
-  current: { type: string; coords: [number, number][] };
-  score: number;
-  lines: number;
-  next: string;
-};
-
-export type RenderAsteroids = {
-  w: number;
-  h: number;
-  ship: { x: number; y: number; angle: number; invuln: boolean };
-  bullets: { x: number; y: number }[];
-  asteroids: { x: number; y: number; r: number; dx: number; dy: number }[];
-  score: number;
-  lives: number;
-};
-
-export type RenderConnectFour = {
-  board: string[][]; // "" | "0" | "1", 6 rows x 7 cols
-};
-
-export type RenderCheckers = {
-  board: string[][]; // "" | "b" | "w" | "B" | "W", rendered from Black's view
-  turn: number;
-  last_move?: unknown;
-};
-
 export type RenderChess = {
   fen: string;
   turn: number;
   legal_count: number;
   last_move?: unknown;
-};
-
-export type RenderGo = {
-  /** Row-major grid; 0 = empty, 1 = black stone, 2 = white stone. */
-  board: number[][];
-  size: number;
-  /** Current player: 0 = black, 1 = white. */
-  turn: number;
-  /** Captured stones per [black, white]. */
-  captures?: { "0"?: number; "1"?: number };
-  /** Last move {x, y} or "pass". */
-  last_move?: { x: number; y: number } | string;
 };

@@ -9,8 +9,6 @@ type Props = {
   onSelect: (key: string | null) => void;
   /** count of open+running matches per game key */
   openCounts: Record<string, number>;
-  /** game keys that are disabled in the lobby (only FOCUS_GAMES are live) */
-  disabledKeys?: ReadonlySet<string>;
   /** collapse the sidebar (hide it) */
   onClose: () => void;
 };
@@ -24,10 +22,12 @@ export default function CatalogMenu({
   active,
   onSelect,
   openCounts,
-  disabledKeys = new Set(),
   onClose,
 }: Props) {
-  const total = (games ?? []).reduce((sum, g) => sum + (openCounts[g.game] ?? 0), 0);
+  const total = (games ?? []).reduce(
+    (sum, g) => sum + (openCounts[g.game] ?? 0),
+    0,
+  );
 
   return (
     <div className="catalog-menu">
@@ -53,19 +53,15 @@ export default function CatalogMenu({
       {games.map((g) => {
         const count = openCounts[g.game] ?? 0;
         const isActive = active === g.game;
-        const isDisabled = disabledKeys.has(g.game);
         return (
           <button
             key={g.game}
             type="button"
-            className={`catalog-row${isActive ? " active" : ""}${isDisabled ? " disabled" : ""}`}
-            onClick={() => {
-              if (isDisabled) return;
-              onSelect(isActive ? null : g.game);
-            }}
+            className={`catalog-row${isActive ? " active" : ""}`}
+            onClick={() => onSelect(isActive ? null : g.game)}
           >
             <span>{g.name}</span>
-            {!isDisabled && count > 0 && <span className="catalog-count">{count}</span>}
+            {count > 0 && <span className="catalog-count">{count}</span>}
           </button>
         );
       })}

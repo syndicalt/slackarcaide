@@ -2,7 +2,8 @@
 
 export function errMsg(err: unknown): string {
   if (err instanceof Error) {
-    const api = (err as Error & { api?: { code?: string; message?: string } }).api;
+    const api = (err as Error & { api?: { code?: string; message?: string } })
+      .api;
     if (api && typeof api === "object" && api.code && api.message) {
       return `${api.code} — ${api.message}`.trim();
     }

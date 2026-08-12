@@ -3,8 +3,10 @@
 Supports both Postgres (asyncpg) and SQLite (aiosqlite), selected by the
 DATABASE_URL scheme. SQLite is convenient for local dev/tests.
 """
-from datetime import datetime, timezone
 
+from datetime import UTC, datetime
+
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -17,12 +19,22 @@ class Base(DeclarativeBase):
 
 _engine = None
 _sessionmaker = None
+EXPECTED_SCHEMA_REVISION = "0002_hardened_schema"
 
 
 def get_engine():
     global _engine
     if _engine is None:
-        _engine = create_async_engine(get_settings().database_url, pool_pre_ping=True)
+        settings = get_settings()
+        options = {"pool_pre_ping": True}
+        if settings.database_url.startswith("postgresql"):
+            options.update(
+                pool_size=settings.database_pool_size,
+                max_overflow=settings.database_max_overflow,
+                pool_timeout=10,
+                connect_args={"timeout": 5, "command_timeout": 30},
+            )
+        _engine = create_async_engine(settings.database_url, **options)
     return _engine
 
 
@@ -36,17 +48,43 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
 
 
 async def init_db() -> None:
-    """Create tables if they don't exist (v1; no alembic yet)."""
+    """Initialize disposable SQLite or verify a migrated production schema.
+
+    Tests use in-memory SQLite and deliberately create their schema from ORM
+    metadata. PostgreSQL is deployment state: mutating it with ``create_all``
+    would bypass Alembic and make later upgrades ambiguous, so startup fails
+    closed unless the expected revision is already installed.
+    """
     import app.models  # noqa: F401  (ensure all models are registered)
 
+    settings = get_settings()
     async with get_engine().begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        if settings.database_url.startswith("sqlite"):
+            await conn.run_sync(Base.metadata.create_all)
+            return
+        revision = await conn.scalar(text("SELECT version_num FROM alembic_version"))
+        if revision != EXPECTED_SCHEMA_REVISION:
+            raise RuntimeError(
+                "database schema is not current: "
+                f"expected {EXPECTED_SCHEMA_REVISION!r}, found {revision!r}; "
+                "run `alembic upgrade head` before starting the API"
+            )
 
 
 async def get_session():
     """FastAPI dependency yielding an AsyncSession."""
     async with get_sessionmaker()() as session:
         yield session
+
+
+async def close_db() -> None:
+    """Dispose pooled connections and reset lazy globals for clean shutdown."""
+    global _engine, _sessionmaker
+    engine = _engine
+    _sessionmaker = None
+    _engine = None
+    if engine is not None:
+        await engine.dispose()
 
 
 async def recover_interrupted_matches() -> None:
@@ -67,7 +105,7 @@ async def recover_interrupted_matches() -> None:
         result = await session.execute(
             update(Match)
             .where(Match.status == "running")
-            .values(status="error", ended_at=datetime.now(timezone.utc))
+            .values(status="error", ended_at=datetime.now(UTC))
         )
         await session.commit()
         if result.rowcount:

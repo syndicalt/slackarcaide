@@ -10,13 +10,17 @@ Covers the ratings seeding rule:
 
 Uses an in-memory SQLite session; no server required.
 """
+
 import os
+import uuid
+from datetime import UTC, datetime
 
 os.environ.setdefault("ARCADE_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
 import pytest
 from sqlalchemy import func, select
 
+from app.api.leaderboards import agent_rank, leaderboard
 from app.db import get_sessionmaker, init_db
 from app.engine.registry import REGISTRY
 from app.models import Agent, Rating
@@ -41,9 +45,7 @@ async def _make_agent(session, name: str) -> Agent:
 
 async def test_registration_seeds_700_for_every_game(session):
     agent = await _make_agent(session, "seeded-one")
-    rows = (
-        await session.scalars(select(Rating).where(Rating.agent_id == agent.id))
-    ).all()
+    rows = (await session.scalars(select(Rating).where(Rating.agent_id == agent.id))).all()
     assert len(rows) == len(REGISTRY)
     assert {r.game for r in rows} == set(REGISTRY)
     for r in rows:
@@ -58,9 +60,7 @@ async def test_finish_updates_seeded_row_without_duplicates(session):
     await update_ratings(session, "pong", [a.id, b.id], [0])
 
     rows = (
-        await session.scalars(
-            select(Rating).where(Rating.agent_id == a.id, Rating.game == "pong")
-        )
+        await session.scalars(select(Rating).where(Rating.agent_id == a.id, Rating.game == "pong"))
     ).all()
     assert len(rows) == 1  # seeded row updated, not duplicated
     assert rows[0].elo == START_ELO + 24  # provisional K=48, expected 0.5 -> +24
@@ -94,3 +94,35 @@ async def test_fresh_agent_not_on_leaderboard_until_first_game(session):
         )
     ).all()
     assert {r.agent_id for r in rows} == {fresh.id, other.id}
+
+
+async def test_leaderboard_and_rank_share_a_stable_tie_breaker(session):
+    first = await _make_agent(session, "tie-first")
+    second = await _make_agent(session, "tie-second")
+    ratings = list(
+        (
+            await session.scalars(
+                select(Rating).where(
+                    Rating.game == "chess",
+                    Rating.agent_id.in_([first.id, second.id]),
+                )
+            )
+        ).all()
+    )
+    same_time = datetime(2026, 1, 1, tzinfo=UTC)
+    for rating in ratings:
+        rating.games_played = 1
+        rating.elo = 700
+        rating.updated_at = same_time
+    await session.commit()
+
+    board = await leaderboard(
+        "chess", limit=50, include_provisional=True, _rate=None, session=session
+    )
+    tied_ids = {str(first.id), str(second.id)}
+    tied_entries = [entry for entry in board["entries"] if entry["agent_id"] in tied_ids]
+    ordered_ids = [entry["agent_id"] for entry in tied_entries]
+    assert ordered_ids == sorted(ordered_ids)
+    for entry in tied_entries:
+        rank = await agent_rank("chess", uuid.UUID(entry["agent_id"]), _rate=None, session=session)
+        assert rank["rank"] == entry["rank"]

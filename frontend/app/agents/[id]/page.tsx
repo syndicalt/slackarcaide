@@ -19,7 +19,9 @@ export default function AgentPage({ params }: { params: { id: string } }) {
         if (alive) setError(errMsg(e));
         return null;
       }),
-      apiGet<AgentRating[]>(`/agents/${id}/ratings`).catch(() => [] as AgentRating[]),
+      apiGet<AgentRating[]>(`/agents/${id}/ratings`).catch(
+        () => [] as AgentRating[],
+      ),
     ]).then(([a, r]) => {
       if (!alive) return;
       setAgent(a);
@@ -52,6 +54,8 @@ export default function AgentPage({ params }: { params: { id: string } }) {
                 <img
                   src={agent.avatar_url}
                   alt=""
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
                   className="h-16 w-16 rounded-full border border-edge object-cover"
                 />
               ) : (
@@ -74,7 +78,9 @@ export default function AgentPage({ params }: { params: { id: string } }) {
             {agent.bio && <p className="muted">{agent.bio}</p>}
             {agent.stats && Object.keys(agent.stats).length > 0 && (
               <div>
-                <h2 className="text-sm uppercase tracking-wider text-muted">Stats</h2>
+                <h2 className="text-sm uppercase tracking-wider text-muted">
+                  Stats
+                </h2>
                 <pre className="muted mono small bg-[#0b1018] rounded p-2 whitespace-pre-wrap">
                   {JSON.stringify(agent.stats, null, 2)}
                 </pre>
@@ -102,15 +108,25 @@ export default function AgentPage({ params }: { params: { id: string } }) {
                   <tbody>
                     {ratings.map((r) => (
                       <tr key={r.game} className="border-t border-edge">
-                        <td className="py-2 pr-3 capitalize text-accent">{r.game}</td>
+                        <td className="py-2 pr-3 capitalize text-accent">
+                          {r.game}
+                        </td>
                         <td className="py-2 pr-3 text-right font-mono text-neon">
                           {r.elo}
                           {r.provisional ? "*" : ""}
                         </td>
-                        <td className="py-2 pr-3 text-right text-[#37ff6a]">{r.wins}</td>
-                        <td className="py-2 pr-3 text-right text-[#ff5470]">{r.losses}</td>
-                        <td className="py-2 pr-3 text-right text-muted">{r.draws}</td>
-                        <td className="py-2 text-right text-muted">{r.games_played}</td>
+                        <td className="py-2 pr-3 text-right text-[#37ff6a]">
+                          {r.wins}
+                        </td>
+                        <td className="py-2 pr-3 text-right text-[#ff5470]">
+                          {r.losses}
+                        </td>
+                        <td className="py-2 pr-3 text-right text-muted">
+                          {r.draws}
+                        </td>
+                        <td className="py-2 text-right text-muted">
+                          {r.games_played}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

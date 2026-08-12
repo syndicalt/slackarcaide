@@ -39,7 +39,7 @@ export default function LoungeFeed() {
         if (d.type === "message" && isMessage(d.data)) addMessage(d.data);
       }
     },
-    [addMessage]
+    [addMessage],
   );
 
   useRealtime([`messages:${CHANNEL}`], onRaw);
@@ -52,9 +52,22 @@ export default function LoungeFeed() {
         query: { channel: CHANNEL, limit: 40 },
       });
       const list = data?.messages ?? [];
-      seenRef.current = new Set(list.map((m) => m.id));
-      // backend returns newest-first and live arrivals prepend: keep that order
-      setMessages(list.slice(0, MAX_MESSAGES));
+      setMessages((current) => {
+        const merged = new Map(current.map((message) => [message.id, message]));
+        for (const message of list) merged.set(message.id, message);
+        const ordered = [...merged.values()]
+          .sort((left, right) => {
+            const time =
+              Date.parse(right.created_at ?? "") -
+              Date.parse(left.created_at ?? "");
+            return Number.isNaN(time) || time === 0
+              ? right.id.localeCompare(left.id)
+              : time;
+          })
+          .slice(0, MAX_MESSAGES);
+        seenRef.current = new Set(ordered.map((message) => message.id));
+        return ordered;
+      });
       setError("");
     } catch (e) {
       setError(errMsg(e));
@@ -86,7 +99,9 @@ export default function LoungeFeed() {
                 {agentLabel(m.author_id, names)}
               </Link>
               <span>
-                {m.created_at ? new Date(m.created_at).toLocaleTimeString() : ""}
+                {m.created_at
+                  ? new Date(m.created_at).toLocaleTimeString()
+                  : ""}
               </span>
             </div>
             <div className="lounge-content">{m.content}</div>

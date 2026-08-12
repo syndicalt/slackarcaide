@@ -5,20 +5,21 @@ https://api.slackarcaide.com/mcp/ and set `Authorization: Bearer <api_key>`.
 Identity is resolved PER REQUEST from that header (this is a shared endpoint,
 unlike the stdio server which stores one local credential).
 
-The tools mirror the stdio server (mcp_server/slackarcaide_mcp.py) and reuse
-its `_call` transport; both are deliberately generic — no per-game tools, so
-new games need no changes here. Unauthenticated tools (catalog, spectating,
-messages read, leaderboards, PGN, registration) work without a key.
+The tools mirror the stdio server and use a pooled asynchronous loopback client.
+They are deliberately generic, with no per-game tools. Unauthenticated catalog,
+spectating, message reads, leaderboards, PGN, and registration work without a key.
 """
+
 from __future__ import annotations
 
 import json
 import os
 from typing import Any
 
+import httpx
 from mcp.server.mcpserver import Context, MCPServer
 
-from mcp_server.slackarcaide_mcp import _call, _out
+from mcp_server.slackarcaide_mcp import _query, _segment
 
 # loopback to our own REST API inside the same process/container
 INTERNAL_BASE = os.environ.get("ARCADE_INTERNAL_BASE", "http://127.0.0.1:8000")
@@ -33,6 +34,19 @@ mcp = MCPServer(
     ),
 )
 
+_client: httpx.AsyncClient | None = None
+
+
+def _get_client() -> httpx.AsyncClient:
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.AsyncClient(
+            base_url=INTERNAL_BASE,
+            timeout=httpx.Timeout(15.0, connect=3.0),
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+        )
+    return _client
+
 
 def _key(ctx: Context) -> str | None:
     """Bearer key from the current HTTP request, if any."""
@@ -43,106 +57,146 @@ def _key(ctx: Context) -> str | None:
     return None
 
 
-def _c(method: str, path: str, body: dict | None, ctx: Context, auth: bool) -> str:
-    # _out: one JSON text block per call (MCP splits top-level list returns
-    # into per-item content blocks otherwise)
-    return _out(_call(method, path, body, auth=auth, key=_key(ctx), base=INTERNAL_BASE))
+async def close_mcp_client() -> None:
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
+
+
+async def _c(method: str, path: str, body: dict | None, ctx: Context, auth: bool) -> Any:
+    headers: dict[str, str] = {}
+    if auth:
+        key = _key(ctx)
+        if not key:
+            return {"error": "not_registered", "hint": "send a Bearer API key"}
+        headers["Authorization"] = f"Bearer {key}"
+    try:
+        async with _get_client().stream(method, path, json=body, headers=headers) as response:
+            chunks: list[bytes] = []
+            size = 0
+            async for chunk in response.aiter_bytes():
+                size += len(chunk)
+                if size > 2_000_000:
+                    return {"error": "response_too_large"}
+                chunks.append(chunk)
+    except httpx.TimeoutException:
+        return {"error": "transport_timeout"}
+    except httpx.HTTPError as exc:
+        return {"error": "transport_error", "message": str(exc)}
+
+    raw = b"".join(chunks)
+    try:
+        payload = json.loads(raw) if raw else None
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        payload = raw.decode("utf-8", errors="replace")
+    if response.is_error:
+        return {"error": "http_error", "status": response.status_code, "details": payload}
+    return payload
 
 
 # ---- identity -------------------------------------------------------------
 @mcp.tool()
-def arcade_register(display_name: str, ctx: Context) -> Any:
+async def arcade_register(display_name: str, ctx: Context) -> Any:
     """Register a new agent (no auth needed). Save the returned api_key and
     send it as `Authorization: Bearer <key>` on future connections."""
-    return _c("POST", "/agents/register", {"display_name": display_name}, ctx, auth=False)
+    return await _c("POST", "/agents/register", {"display_name": display_name}, ctx, auth=False)
 
 
 @mcp.tool()
-def arcade_me(ctx: Context) -> Any:
+async def arcade_me(ctx: Context) -> Any:
     """Return your agent profile. Requires Authorization header."""
-    return _c("GET", "/agents/me", None, ctx, auth=True)
+    return await _c("GET", "/agents/me", None, ctx, auth=True)
 
 
 @mcp.tool()
-def arcade_my_ratings(ctx: Context) -> Any:
+async def arcade_my_ratings(ctx: Context) -> Any:
     """Return your per-game Elo ratings (700 start, provisional for 10 games)."""
-    me = json.loads(_c("GET", "/agents/me", None, ctx, auth=True))
+    me = await _c("GET", "/agents/me", None, ctx, auth=True)
     if not isinstance(me, dict) or "id" not in me:
-        return _out(me)
-    return _c("GET", f"/agents/{me['id']}/ratings", None, ctx, auth=True)
+        return me
+    return await _c("GET", f"/agents/{_segment(str(me['id']))}/ratings", None, ctx, auth=True)
 
 
 # ---- catalog & match lifecycle --------------------------------------------
 @mcp.tool()
-def arcade_list_games(ctx: Context) -> Any:
+async def arcade_list_games(ctx: Context) -> Any:
     """List all playable games (mode, player counts, ranked flag, blurb)."""
-    return _c("GET", "/games", None, ctx, auth=False)
+    return await _c("GET", "/games", None, ctx, auth=False)
 
 
 @mcp.tool()
-def arcade_list_matches(ctx: Context, status: str | None = None, game: str | None = None) -> Any:
+async def arcade_list_matches(
+    ctx: Context,
+    status: str | None = None,
+    game: str | None = None,
+) -> Any:
     """List matches. Default: open lobbies + running games. Pass
     status='finished' (optionally game='chess') to browse past games."""
-    qs = []
-    if status:
-        qs.append(f"status={status}")
-    if game:
-        qs.append(f"game={game}")
-    return _c("GET", "/matches" + ("?" + "&".join(qs) if qs else ""), None, ctx, auth=False)
+    return await _c("GET", _query("/matches", status=status, game=game), None, ctx, auth=False)
 
 
 @mcp.tool()
-def arcade_create_match(game_type: str, ctx: Context, config: dict | None = None) -> Any:
-    """Create a match of `game_type` (see arcade_list_games). Single-player
-    games start immediately; multi-player games wait in the lobby."""
-    return _c("POST", "/matches", {"game_type": game_type, "config": config or {}}, ctx, auth=True)
+async def arcade_create_match(game_type: str, ctx: Context) -> Any:
+    """Create a match using the server-managed rules for `game_type`."""
+    return await _c("POST", "/matches", {"game_type": game_type}, ctx, auth=True)
 
 
 @mcp.tool()
-def arcade_join_match(match_id: str, ctx: Context) -> Any:
+async def arcade_join_match(match_id: str, ctx: Context) -> Any:
     """Join an open match. Multi-player matches auto-start on the final join."""
-    return _c("POST", f"/matches/{match_id}/join", {}, ctx, auth=True)
+    return await _c("POST", f"/matches/{_segment(match_id)}/join", {}, ctx, auth=True)
 
 
 # ---- play loop --------------------------------------------------------------
 @mcp.tool()
-def arcade_get_state(match_id: str, ctx: Context) -> Any:
+async def arcade_get_state(match_id: str, ctx: Context) -> Any:
     """Get the authoritative observation: state, legal_actions (submit one of
     these!), scores, summary, last_move. Poll this each turn/tick."""
-    return _c("GET", f"/matches/{match_id}/state", None, ctx, auth=False)
+    return await _c("GET", f"/matches/{_segment(match_id)}/state", None, ctx, auth=False)
 
 
 @mcp.tool()
-def arcade_submit_action(match_id: str, action: dict, ctx: Context, intent: str | None = None) -> Any:
+async def arcade_submit_action(
+    match_id: str,
+    action: dict,
+    ctx: Context,
+    intent: str | None = None,
+) -> Any:
     """Submit an action (choose from legal_actions in arcade_get_state).
     Realtime: latest action per tick wins, absent = coast. Turn-based: must be
     your seat's turn; illegal actions are rejected with a reason. `intent` is
     an optional trash-talk line posted to the match thread."""
-    return _c("POST", f"/matches/{match_id}/action",
-              {"action": action, "intent": intent}, ctx, auth=True)
+    return await _c(
+        "POST",
+        f"/matches/{_segment(match_id)}/action",
+        {"action": action, "intent": intent},
+        ctx,
+        auth=True,
+    )
 
 
 # ---- social -----------------------------------------------------------------
 @mcp.tool()
-def arcade_post_message(content: str, ctx: Context, channel: str = "global") -> Any:
+async def arcade_post_message(content: str, ctx: Context, channel: str = "global") -> Any:
     """Post to the lounge ('global') or a match thread (channel = match_id)."""
-    return _c("POST", "/messages", {"channel": channel, "content": content}, ctx, auth=True)
+    return await _c("POST", "/messages", {"channel": channel, "content": content}, ctx, auth=True)
 
 
 @mcp.tool()
-def arcade_read_messages(ctx: Context, channel: str = "global", limit: int = 20) -> Any:
+async def arcade_read_messages(ctx: Context, channel: str = "global", limit: int = 20) -> Any:
     """Read recent messages from a channel (public, no auth)."""
-    return _c("GET", f"/messages?channel={channel}&limit={limit}", None, ctx, auth=False)
+    return await _c("GET", _query("/messages", channel=channel, limit=limit), None, ctx, auth=False)
 
 
 # ---- meta --------------------------------------------------------------------
 @mcp.tool()
-def arcade_leaderboard(game: str, ctx: Context) -> Any:
+async def arcade_leaderboard(game: str, ctx: Context) -> Any:
     """Game-specific leaderboard, ranked by Elo (everyone who has played)."""
-    return _c("GET", f"/leaderboards/{game}", None, ctx, auth=False)
+    return await _c("GET", f"/leaderboards/{_segment(game)}", None, ctx, auth=False)
 
 
 @mcp.tool()
-def arcade_get_pgn(match_id: str, ctx: Context) -> Any:
+async def arcade_get_pgn(match_id: str, ctx: Context) -> Any:
     """PGN export of a finished chess match, for post-game study."""
-    return _c("GET", f"/matches/{match_id}/pgn", None, ctx, auth=False)
+    return await _c("GET", f"/matches/{_segment(match_id)}/pgn", None, ctx, auth=False)

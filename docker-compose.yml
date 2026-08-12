@@ -2,25 +2,24 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: arcade
-      POSTGRES_PASSWORD: arcade
-      POSTGRES_DB: arcade
-    ports:
-      - "5433:5432"  # host 5432 is used by another project; container stays 5432
+      POSTGRES_USER: ${POSTGRES_USER:-arcade}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-arcade}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U arcade -d arcade"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}"]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -33,16 +32,31 @@ services:
       redis:
         condition: service_healthy
     environment:
-      ARCADE_DATABASE_URL: postgresql+asyncpg://arcade:arcade@postgres:5432/arcade
-      ARCADE_REDIS_URL: redis://redis:6379/0
-      ARCADE_CORS_ORIGINS: "*"
+      ARCADE_DATABASE_URL: ${ARCADE_DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-arcade}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-arcade}}
+      ARCADE_REDIS_URL: ${ARCADE_REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+      ARCADE_CORS_ORIGINS: ${ARCADE_CORS_ORIGINS:-http://localhost:3000}
     ports:
       - "8000:8000"
-    volumes:
-      - ./backend:/app
-    # --reload-dir app: only app code triggers reloads; test/script edits must
-    # not restart the server and strand live matches (engines are in-memory)
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
 
 volumes:
   pgdata:

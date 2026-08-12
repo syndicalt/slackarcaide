@@ -1,4 +1,5 @@
 """WebSocket endpoint wiring the realtime hub onto the FastAPI app."""
+
 from fastapi import APIRouter, WebSocket
 
 from app.realtime import hub

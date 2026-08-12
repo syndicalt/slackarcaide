@@ -7,7 +7,6 @@ import CanvasStage from "@/components/canvas/CanvasStage";
 import GameNode from "@/components/canvas/GameNode";
 import CatalogMenu from "@/components/canvas/CatalogMenu";
 import LoungeFeed from "@/components/canvas/LoungeFeed";
-import { FOCUS_GAMES } from "@/lib/config";
 import {
   DEFAULT_LAYOUT,
   layoutGames,
@@ -66,18 +65,21 @@ export default function CanvasPage() {
   // Node positions. Initialise to the deterministic default grid so SSR and the
   // first client render match; apply persisted positions only after mount.
   const [positions, setPositions] = useState<Record<string, Pos>>(() =>
-    layoutGames(gameKeys)
+    layoutGames(gameKeys),
   );
 
   useEffect(() => {
-    setPositions(() => {
-      const next = layoutGames(gameKeys);
-      const saved = loadLayout();
-      for (const k of Object.keys(next)) {
-        if (saved[k]) next[k] = saved[k];
-      }
-      return next;
+    const frame = requestAnimationFrame(() => {
+      setPositions(() => {
+        const next = layoutGames(gameKeys);
+        const saved = loadLayout();
+        for (const k of Object.keys(next)) {
+          if (saved[k]) next[k] = saved[k];
+        }
+        return next;
+      });
     });
+    return () => cancelAnimationFrame(frame);
   }, [gameKeys]);
 
   const byGame = useMemo(() => {
@@ -104,8 +106,7 @@ export default function CanvasPage() {
         key={key}
         game={game}
         matches={gameMatches}
-        pos={positions[key]}
-        disabled={!FOCUS_GAMES.includes(key)}
+        pos={positions[key] ?? layoutGames(gameKeys)[key]}
         filtered={active === null || active === key}
         selected={active === key}
         onSelect={() => setActive(active === key ? null : key)}
@@ -130,25 +131,22 @@ export default function CanvasPage() {
           active={active}
           onSelect={setActive}
           openCounts={openCounts}
-          disabledKeys={new Set(
-            (games ?? []).map((g) => g.game).filter((k) => !FOCUS_GAMES.includes(k))
-          )}
           onClose={() => setMenuOpen(false)}
         />
       )}
-{!menuOpen && (
-<button
-type="button"
-className="catalog-reopen ghost"
-onClick={() => setMenuOpen(true)}
-aria-label="Show games sidebar"
->
-Games
-</button>
-)}
-{error && <div className="canvas-error error">{error}</div>}
-<CanvasStage>{nodes}</CanvasStage>
-<LoungeFeed />
-</div>
+      {!menuOpen && (
+        <button
+          type="button"
+          className="catalog-reopen ghost"
+          onClick={() => setMenuOpen(true)}
+          aria-label="Show games sidebar"
+        >
+          Games
+        </button>
+      )}
+      {error && <div className="canvas-error error">{error}</div>}
+      <CanvasStage>{nodes}</CanvasStage>
+      <LoungeFeed />
+    </div>
   );
 }

@@ -11,13 +11,13 @@ Asserts the whole terminal path end-to-end (in-memory SQLite, real manager):
     terminal publish was silently cancelled and the last frame spectators saw
     was the engine-less placeholder ("Match in finished", no render).
 """
+
 import os
 
 os.environ.setdefault("ARCADE_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
 import asyncio
 
-import pytest
 from sqlalchemy import select
 
 from app.db import get_sessionmaker, init_db
@@ -35,7 +35,8 @@ async def test_ranked_match_strips_start_fen():
         s.add(a)
         await s.commit()
         m = await mgr.create(
-            a, "chess", "turnbased",
+            a,
+            "chess",
             {"start_fen": "7k/8/8/6Q1/8/5K2/8/8 w - - 0 1"},
             s,
         )
@@ -59,8 +60,14 @@ async def test_pong_match_clean_exit_on_win(monkeypatch):
         s.add_all([a1, a2])
         await s.commit()
         m = await mgr.create(
-            a1, "pong", "realtime",
-            {"win_points": 1, "serve_delay_ticks": 0, "tick_rate": 200},
+            a1,
+            "pong",
+            {
+                "win_points": 1,
+                "serve_delay_ticks": 0,
+                "tick_rate": 200,
+                "max_duration_seconds": 500,
+            },
             s,
         )
         m = await mgr.join(m, a2, s)  # second join auto-starts the match

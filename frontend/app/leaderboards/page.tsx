@@ -22,7 +22,7 @@ export default function LeaderboardsPage() {
       .then((g) => {
         setGames(g ?? []);
         const ranked = (g ?? []).filter((x) => x.elo_ranked);
-        const first = (ranked.length ? ranked : g ?? [])[0];
+        const first = (ranked.length ? ranked : (g ?? []))[0];
         if (first) setGame(first.game);
       })
       .catch((e) => setError(errMsg(e)));

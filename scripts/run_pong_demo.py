@@ -9,18 +9,22 @@ coast policy keep the paddle sweeping smoothly between actions, which
 sustains rallies and makes the slow-start -> accelerating -> capped ball
 speed visible. The match ends on a win; Elo updates for the two agents.
 
-Usage:  python scripts/run_pong_demo.py [WIN_POINTS] [MAX_SECONDS]
+Usage:  python scripts/run_pong_demo.py [MAX_SECONDS]
 """
+
 import json
 import os
 import sys
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 
 BASE = os.environ.get("ARCADE_DEMO_BASE", "http://127.0.0.1:8098")
-WIN_POINTS = int(sys.argv[1]) if len(sys.argv) > 1 else 11  # classical pong: first to 11
-MAX_SECONDS = int(sys.argv[2]) if len(sys.argv) > 2 else 600
+_base_url = urlsplit(BASE)
+if _base_url.scheme not in {"http", "https"} or not _base_url.netloc:
+    raise SystemExit("ARCADE_DEMO_BASE must be an absolute HTTP(S) URL")
+MAX_SECONDS = int(sys.argv[1]) if len(sys.argv) > 1 else 600
 PADDLE_H = 90.0
 PADDLE_W = 14.0
 H = 500.0
@@ -32,14 +36,16 @@ def req(method, path, body=None, token=None):
     if token:
         headers["Authorization"] = f"Bearer {token}"
     data = json.dumps(body).encode() if body is not None else None
-    r = urllib.request.Request(BASE + path, data=data, method=method, headers=headers)
+    r = urllib.request.Request(  # noqa: S310 - BASE is restricted to HTTP(S) below
+        BASE + path, data=data, method=method, headers=headers
+    )
     try:
-        with urllib.request.urlopen(r, timeout=10) as resp:
+        with urllib.request.urlopen(r, timeout=10) as resp:  # noqa: S310
             return json.load(resp)
     except urllib.error.HTTPError as e:
         try:
             return {"_http_error": e.code, **json.load(e)}
-        except Exception:
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
             return {"_http_error": e.code}
 
 
@@ -76,14 +82,7 @@ def main():
 
     m = None
     for _try in range(30):
-        # no config by default: the engine's classical win_points (11) applies;
-        # an explicit CLI arg overrides it
-        config = {"win_points": WIN_POINTS} if len(sys.argv) > 1 else {}
-        m = req("POST", "/matches", {
-            "game_type": "pong",
-            "mode": "realtime",
-            "config": config,
-        }, key_a)
+        m = req("POST", "/matches", {"game_type": "pong"}, key_a)
         if m.get("_http_error") != 401:
             break
         time.sleep(0.2)
@@ -116,9 +115,12 @@ def main():
             time.sleep(0.05)
             continue
         for seat in (0, 1):
-            a = req("POST", f"/matches/{mid}/action",
-                    {"action": decide(seat, st), "intent": f"seat{seat} track"},
-                    keys[seat])
+            a = req(
+                "POST",
+                f"/matches/{mid}/action",
+                {"action": decide(seat, st), "intent": f"seat{seat} track"},
+                keys[seat],
+            )
             if "_http_error" in a:
                 time.sleep(0.02)
         rallies += 1
@@ -128,9 +130,11 @@ def main():
             ball = st.get("ball") or {}
             v = (ball.get("vx", 0) ** 2 + ball.get("vy", 0) ** 2) ** 0.5
             scores = st.get("scores") or [0, 0]
-            print(f"t={now-started:6.1f}s tick={st.get('tick',0):>5} "
-                  f"ball_spd={v:5.1f} paddles=[{st['paddles'][0]:5.1f},{st['paddles'][1]:5.1f}] "
-                  f"scores={scores}")
+            print(
+                f"t={now - started:6.1f}s tick={st.get('tick', 0):>5} "
+                f"ball_spd={v:5.1f} paddles=[{st['paddles'][0]:5.1f},{st['paddles'][1]:5.1f}] "
+                f"scores={scores}"
+            )
         if now - started > MAX_SECONDS:
             print("time cap reached; leaving match running")
             break
@@ -139,13 +143,18 @@ def main():
     fin = req("GET", f"/matches/{mid}")
     result = fin.get("result") or {}
     print("=== finished ===")
-    print(json.dumps({
-        "status": fin.get("status"),
-        "result_reason": result.get("reason"),
-        "winner_seats": result.get("winner_seats"),
-        "winner_agents": result.get("winner_agents"),
-        "scores": result.get("scores"),
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "status": fin.get("status"),
+                "result_reason": result.get("reason"),
+                "winner_seats": result.get("winner_seats"),
+                "winner_agents": result.get("winner_agents"),
+                "scores": result.get("scores"),
+            },
+            indent=2,
+        )
+    )
     print(f"match page: http://127.0.0.1:3000/match/{mid}")
 
 

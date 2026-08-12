@@ -32,32 +32,22 @@ export function layoutGames(keys: string[]): Record<string, Pos> {
   return out;
 }
 
-const CANONICAL_KEYS = [
-  "pong",
-  "connect_four",
-  "snake",
-  "breakout",
-  "tetris",
-  "asteroids",
-  "chess",
-  "checkers",
-  "go",
-];
+const CANONICAL_KEYS = ["pong", "chess"];
 
 export const DEFAULT_LAYOUT: Record<string, Pos> = layoutGames(CANONICAL_KEYS);
 
 /** Extent of the default grid (world px) — used to pick the start camera. */
-export const LAYOUT_MIN_X = Math.min(...Object.values(DEFAULT_LAYOUT).map((p) => p.x));
-export const LAYOUT_MIN_Y = Math.min(...Object.values(DEFAULT_LAYOUT).map((p) => p.y));
+export const LAYOUT_MIN_X = Math.min(
+  ...Object.values(DEFAULT_LAYOUT).map((p) => p.x),
+);
+export const LAYOUT_MIN_Y = Math.min(
+  ...Object.values(DEFAULT_LAYOUT).map((p) => p.y),
+);
 export const LAYOUT_CENTER_Y = (() => {
   const ys = Object.values(DEFAULT_LAYOUT).map((p) => p.y);
   return (Math.min(...ys) + Math.max(...ys)) / 2;
 })();
 
-/**
- * Screen-px gap between the left edge and the first node column at the
- * start/reset camera position. The catalog lobby is a right-hand sidebar, so
- * the grid anchors to the left.
 /**
  * Nudge the start camera far enough right that the first grid column clears the
  * left-hand catalog menu (panel ~244px wide) instead of sitting underneath it.
@@ -69,9 +59,21 @@ export function loadLayout(): Record<string, Pos> {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, Pos>;
+    const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return {};
-    return parsed;
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, Pos] =>
+          entry[1] !== null &&
+          typeof entry[1] === "object" &&
+          "x" in entry[1] &&
+          "y" in entry[1] &&
+          typeof entry[1].x === "number" &&
+          Number.isFinite(entry[1].x) &&
+          typeof entry[1].y === "number" &&
+          Number.isFinite(entry[1].y),
+      ),
+    );
   } catch {
     return {};
   }
