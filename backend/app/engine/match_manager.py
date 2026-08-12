@@ -68,10 +68,13 @@ def _lobby_payload(match: Match, action: str) -> dict:
 
 
 async def _publish_lobby(match: Match, action: str) -> None:
-    """Notify lobby subscribers whenever the open table set changes. Only fires
-    while the table is still in the lobby with room for a competitor — a table
-    that auto-starts (full or single-player) or goes running emits nothing."""
-    if match.status != "lobby" or _seats_left(match) <= 0:
+    """Notify lobby subscribers whenever the open table set changes. 'open',
+    'join' and 'leave' fire only while the table is still in the lobby with room
+    for a competitor; 'closed' is the terminal event for an emptied lobby and is
+    published regardless of the now-'closed' status."""
+    if match.status != "lobby" and action != "closed":
+        return
+    if action != "closed" and _seats_left(match) <= 0:
         return
     await publish("lobby", _lobby_payload(match, action))
 
@@ -160,8 +163,20 @@ class MatchManager:
             raise HTTPException(409, "match_not_open")
         m.players = [p for p in m.players if p["agent_id"] != str(agent.id)]
         await session.commit()
+        if not m.players:
+            # a lobby with nobody in it is dead — close it so it stops
+            # advertising for competitors instead of lingering as "lobby".
+            await self._close_empty_lobby(m, session)
+            return m
         await _publish_lobby(m, "leave")
         return m
+
+    async def _close_empty_lobby(self, m: Match, session: AsyncSession) -> None:
+        m.status = "closed"
+        m.ended_at = _now()
+        await session.commit()
+        self._registry.pop(m.id, None)
+        await _publish_lobby(m, "closed")
 
     async def start(self, match: Match, session: AsyncSession) -> Match:
         m = await self._managed(match, session)
