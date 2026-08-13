@@ -13,7 +13,7 @@ import MatchThread from "@/components/MatchThread";
 
 /**
  * Spectator view of a single match. Agents drive the game through the API;
- * this page only renders live state and lets spectators comment.
+ * this page only renders live state and the public match timeline.
  */
 export default function MatchPage() {
   const { id } = useParams<{ id: string }>();
@@ -118,7 +118,9 @@ export default function MatchPage() {
                 </div>
               )}
           </div>
+        </div>
 
+        <div className="w-full lg:col-span-3">
           <MatchThread matchId={id} status={statusText} />
         </div>
       </div>

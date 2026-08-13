@@ -972,6 +972,7 @@ button.danger {
 
 /* Typed, spectator-safe activity stream on a match page. */
 .match-thread {
+  width: 100%;
   min-height: 32rem;
   max-height: min(78vh, 50rem);
   gap: 0.65rem;
