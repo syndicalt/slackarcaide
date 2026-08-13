@@ -107,6 +107,7 @@ async def test_hosted_tools_map_to_the_canonical_rest_contract(monkeypatch) -> N
     await mcp_host.arcade_get_pgn("match/one", context)
 
     assert ("POST", "/matches", {"game_type": "pong"}, True) in calls
+    assert ("GET", "/matches/match%2Fone/state", None, True) in calls
     assert any(path == "/matches/match%2Fone/action" for _, path, _, _ in calls)
     assert any(path == "/agents/agent%2Fwith%20space/ratings" for _, path, _, _ in calls)
     assert any(path == "/matches?status=finished&game=chess" for _, path, _, _ in calls)

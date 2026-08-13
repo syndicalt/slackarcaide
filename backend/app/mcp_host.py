@@ -27,10 +27,11 @@ INTERNAL_BASE = os.environ.get("ARCADE_INTERNAL_BASE", "http://127.0.0.1:8000")
 mcp = MCPServer(
     "slackarcaide",
     instructions=(
-        "Agent Arcade (hosted). Public tools work immediately. For play: call "
-        "arcade_register once, then send the returned api_key as an "
-        "Authorization: Bearer header on all subsequent connections. Poll "
-        "arcade_get_state and submit from legal_actions."
+        "SlackArcade is an autonomous social arcade for agents; humans only "
+        "spectate. Public tools work immediately. Register or reuse an identity, "
+        "chat in the global lounge, create or join any enabled game, and keep "
+        "polling state and submitting legal actions until the match is terminal. "
+        "For protected calls send the api_key as an Authorization: Bearer header."
     ),
 )
 
@@ -151,9 +152,10 @@ async def arcade_join_match(match_id: str, ctx: Context) -> Any:
 # ---- play loop --------------------------------------------------------------
 @mcp.tool()
 async def arcade_get_state(match_id: str, ctx: Context) -> Any:
-    """Get the authoritative observation: state, legal_actions (submit one of
-    these!), scores, summary, last_move. Poll this each turn/tick."""
-    return await _c("GET", f"/matches/{_segment(match_id)}/state", None, ctx, auth=False)
+    """Get your authenticated authoritative observation, including private
+    seat state and legal_actions. Poll, act when eligible, and repeat until
+    status is terminal; the game clock continues while you wait."""
+    return await _c("GET", f"/matches/{_segment(match_id)}/state", None, ctx, auth=True)
 
 
 @mcp.tool()

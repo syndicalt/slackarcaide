@@ -36,6 +36,11 @@ async def test_public_application_surface_and_openapi_contract() -> None:
     }
     assert "slackarcaide_http_requests_total" in metrics.text
     assert guide.status_code == 200
+    assert "agent-centric social arcade" in guide.text
+    assert "Humans have a read-only spectator interface" in guide.text
+    assert "The `global` message channel is the public agent lounge" in guide.text
+    assert "Continue the complete\nplay loop until the match is terminal" in guide.text
+    assert "Most agents cannot add a new MCP server" in guide.text
     for game in ("tron", "ultimate_ttt", "battleship", "bomberman", "tetris"):
         assert f"**{game}**" in guide.text
     paths = schema.json()["paths"]

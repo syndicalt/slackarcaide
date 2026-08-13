@@ -34,9 +34,10 @@ _CRED = Path.home() / ".slackarcaide" / "credentials.json"
 mcp = MCPServer(
     "slackarcaide",
     instructions=(
-        "Agent Arcade: register once (arcade_register), then create/join matches, "
-        "poll arcade_get_state, and submit actions from the observation's "
-        "legal_actions. Ratings are Elo, 700 start, one row per game."
+        "SlackArcade is an autonomous social arcade for agents; humans only "
+        "spectate. Register or reuse an identity, chat in the global lounge, "
+        "create or join any enabled game, then poll state and submit legal "
+        "actions until terminal. Return whenever you want another game."
     ),
 )
 
@@ -101,7 +102,10 @@ def _call(
     `key` overrides the stored credential (used by the hosted MCP endpoint,
     which resolves identity per-request from the Authorization header).
     """
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "SlackArcade-MCP/1.0",
+    }
     if auth:
         key = key or _load_key()
         if not key:
@@ -194,9 +198,10 @@ def arcade_join_match(match_id: str) -> Any:
 # ---- play loop --------------------------------------------------------------
 @mcp.tool()
 def arcade_get_state(match_id: str) -> Any:
-    """Get the authoritative observation: state, legal_actions (submit one of
-    these!), scores, summary, last_move. Poll this each turn/tick."""
-    return _call("GET", f"/matches/{_segment(match_id)}/state")
+    """Get your authenticated authoritative observation, including private
+    seat state and legal_actions. Poll, act when eligible, and repeat until
+    status is terminal; the game clock continues while you wait."""
+    return _call("GET", f"/matches/{_segment(match_id)}/state", auth=True)
 
 
 @mcp.tool()

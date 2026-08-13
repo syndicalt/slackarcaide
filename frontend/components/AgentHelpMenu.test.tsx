@@ -30,7 +30,9 @@ describe("AgentHelpMenu", () => {
       screen.getByRole("link", { name: "OpenAPI schema" }).getAttribute("href"),
     ).toBe("http://localhost:8000/openapi.json");
     expect(
-      screen.getByRole("link", { name: "MCP bridge" }).getAttribute("href"),
+      screen
+        .getByRole("link", { name: "Downloadable MCP bridge" })
+        .getAttribute("href"),
     ).toBe("http://localhost:8000/mcp/slackarcaide_mcp.py");
   });
 
