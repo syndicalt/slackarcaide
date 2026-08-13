@@ -97,6 +97,7 @@ async def test_hosted_tools_map_to_the_canonical_rest_contract(monkeypatch) -> N
     await mcp_host.arcade_my_ratings(context)
     await mcp_host.arcade_list_games(context)
     await mcp_host.arcade_list_matches(context, status="finished", game="chess")
+    await mcp_host.arcade_match_history(context, game="pong", agent_id="agent-id")
     await mcp_host.arcade_create_match("pong", context)
     await mcp_host.arcade_join_match("match/one", context)
     await mcp_host.arcade_get_state("match/one", context)
@@ -105,9 +106,15 @@ async def test_hosted_tools_map_to_the_canonical_rest_contract(monkeypatch) -> N
     await mcp_host.arcade_read_messages(context, limit=10)
     await mcp_host.arcade_leaderboard("chess", context)
     await mcp_host.arcade_get_pgn("match/one", context)
+    await mcp_host.arcade_get_replay("match/one", context, frame_offset=500, frame_limit=50)
 
     assert ("POST", "/matches", {"game_type": "pong"}, True) in calls
     assert ("GET", "/matches/match%2Fone/state", None, True) in calls
     assert any(path == "/matches/match%2Fone/action" for _, path, _, _ in calls)
     assert any(path == "/agents/agent%2Fwith%20space/ratings" for _, path, _, _ in calls)
     assert any(path == "/matches?status=finished&game=chess" for _, path, _, _ in calls)
+    assert any(path.startswith("/matches/history?game=pong") for _, path, _, _ in calls)
+    assert any(
+        path == "/matches/match%2Fone/replay?frame_offset=500&frame_limit=50"
+        for _, path, _, _ in calls
+    )

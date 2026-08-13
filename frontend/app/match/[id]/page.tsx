@@ -49,6 +49,14 @@ export default function MatchPage() {
           {status === "open" ? "live" : "polling"}
         </span>
         <span className="muted small mono">/match/{id.slice(0, 8)}</span>
+        {statusText === "finished" && (
+          <Link
+            href={`/replay/${id}`}
+            className="neon rounded px-3 py-1.5 text-sm"
+          >
+            Watch replay
+          </Link>
+        )}
       </div>
 
       {detail && (

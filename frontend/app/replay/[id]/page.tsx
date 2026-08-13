@@ -15,14 +15,41 @@ export default function ReplayPage() {
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(2); // ticks per second
+  const [offset, setOffset] = useState(0);
+  const [loadingPage, setLoadingPage] = useState(false);
   const timerRef = useRef<number | undefined>(undefined);
+
+  const loadPage = useCallback(
+    async (frameOffset: number, position: "start" | "end" = "start") => {
+      setLoadingPage(true);
+      try {
+        const response = await apiGet<ReplayResponse>(`/matches/${id}/replay`, {
+          query: { frame_offset: frameOffset, frame_limit: 2000 },
+        });
+        setReplay(response);
+        setOffset(frameOffset);
+        setIndex(
+          position === "end" ? Math.max(0, response.frames.length - 1) : 0,
+        );
+        setLoadError("");
+      } catch (cause) {
+        setLoadError(errMsg(cause));
+      } finally {
+        setLoadingPage(false);
+      }
+    },
+    [id],
+  );
 
   useEffect(() => {
     let alive = true;
-    apiGet<ReplayResponse>(`/matches/${id}/replay`)
+    apiGet<ReplayResponse>(`/matches/${id}/replay`, {
+      query: { frame_offset: 0, frame_limit: 2000 },
+    })
       .then((r) => {
         if (!alive) return;
         setReplay(r);
+        setOffset(0);
         setIndex(0);
       })
       .catch((e) => alive && setLoadError(errMsg(e)));
@@ -36,7 +63,11 @@ export default function ReplayPage() {
     timerRef.current = undefined;
     if (playing && replay && replay.frames.length > 1) {
       timerRef.current = window.setInterval(() => {
-        setIndex((i) => (i + 1) % replay.frames.length);
+        setIndex((i) => {
+          if (i + 1 < replay.frames.length) return i + 1;
+          setPlaying(false);
+          return i;
+        });
       }, 1000 / speed);
     }
     return () => clearInterval(timerRef.current);
@@ -61,6 +92,12 @@ export default function ReplayPage() {
           </span>
         )}
         <span className="muted small mono">/replay/{id.slice(0, 8)}</span>
+        <Link
+          href={`/match/${id}`}
+          className="ghost rounded border px-3 py-1.5 text-sm"
+        >
+          Match thread
+        </Link>
       </div>
 
       {loadError && <p className="error">{loadError}</p>}
@@ -114,7 +151,8 @@ export default function ReplayPage() {
                 Next ›
               </button>
               <span className="muted small mono">
-                {frame.tick} / {replay.tick_or_move_count ?? total}
+                frame {offset + index + 1} / {replay.frame_count} · tick{" "}
+                {frame.tick} / {replay.tick_or_move_count ?? frame.tick}
               </span>
               <select
                 value={speed}
@@ -144,8 +182,37 @@ export default function ReplayPage() {
             />
 
             <p className="muted small mt-2">
-              {total} frames · seed {replay.seed}
+              loaded frames {offset + 1}-{offset + total} of{" "}
+              {replay.frame_count} · seed {replay.seed}
             </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="ghost"
+                disabled={offset === 0 || loadingPage}
+                onClick={() => {
+                  stop();
+                  void loadPage(Math.max(0, offset - 2000), "end");
+                }}
+              >
+                Previous 2,000 frames
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                disabled={replay.next_frame_offset == null || loadingPage}
+                onClick={() => {
+                  stop();
+                  if (replay.next_frame_offset != null)
+                    void loadPage(replay.next_frame_offset);
+                }}
+              >
+                Next 2,000 frames
+              </button>
+              {loadingPage && (
+                <span className="muted small">Loading frames…</span>
+              )}
+            </div>
           </div>
         </>
       )}

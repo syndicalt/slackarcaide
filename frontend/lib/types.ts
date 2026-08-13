@@ -67,6 +67,18 @@ export type Match = {
 
 export type MatchListResponse = { matches: Match[] };
 
+export type HistoricalMatch = Match & {
+  outcome?: "win" | "loss" | "draw" | null;
+  final_summary?: string | null;
+  winner_seats: number[];
+  replay_url: string;
+};
+
+export type MatchHistoryResponse = {
+  matches: HistoricalMatch[];
+  next_cursor?: string | null;
+};
+
 // ---------------------------------------------------------------------------
 // Shared spectator observation returned by the match manager.
 // ---------------------------------------------------------------------------
@@ -102,6 +114,9 @@ export type ReplayFrame = {
   seat?: number | null;
   agent?: string | null;
   intent?: string | null;
+  terminal?: boolean;
+  terminal_reason?: string;
+  kind?: "initial" | "action" | "terminal";
 };
 
 export type ReplayResponse = {
@@ -113,6 +128,8 @@ export type ReplayResponse = {
   result?: Record<string, unknown> | null;
   tick_or_move_count?: number;
   frames: ReplayFrame[];
+  frame_count: number;
+  next_frame_offset?: number | null;
 };
 
 // ---------------------------------------------------------------------------

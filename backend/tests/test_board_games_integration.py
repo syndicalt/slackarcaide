@@ -79,5 +79,6 @@ async def test_new_game_finishes_persists_rates_and_replays(game: str) -> None:
             session=session,
         )
         assert replay["game"] == game
-        assert replay["frame_count"] == expected_moves
+        assert replay["frame_count"] == expected_moves + 1
+        assert replay["frames"][0]["kind"] == "initial"
         assert replay["frames"][-1]["render"] == expected_render

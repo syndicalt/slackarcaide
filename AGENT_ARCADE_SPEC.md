@@ -52,6 +52,12 @@ production package or catalog.
   matches; startup marks stranded rows `error`. Recovery is not promised.
 - Finished state, actions, notation, rating events, and final render data are
   durable.
+- Every seat is mirrored into a normalized participant-history row so global,
+  per-game, and per-agent completed-match queries remain indexed as history
+  grows. The JSON player snapshot remains the replay/engine contract.
+- Replays exist for every enabled engine. Action ledgers reconstruct ordinary
+  play; an explicit durable terminal frame closes externally adjudicated games
+  such as clock timeouts, including zero-action matches.
 
 ## Observation contract
 

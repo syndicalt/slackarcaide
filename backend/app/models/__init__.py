@@ -85,6 +85,14 @@ class Match(Base):
     __table_args__ = (
         Index("ix_match_game_status", "game_type", "status"),
         Index("ix_match_status_created", "status", "created_at"),
+        Index("ix_match_status_ended_id", "status", "ended_at", "id"),
+        Index(
+            "ix_match_game_status_ended_id",
+            "game_type",
+            "status",
+            "ended_at",
+            "id",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -100,6 +108,31 @@ class Match(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     tick_or_move_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class MatchParticipant(Base):
+    """Normalized participant rows used for indexed historical queries.
+
+    ``Match.players`` remains the self-contained snapshot consumed by engines
+    and API clients. Searching agent UUIDs inside that JSON array is neither
+    portable nor scalable, so history discovery uses this relational mirror.
+    """
+
+    __tablename__ = "match_participant"
+    __table_args__ = (
+        UniqueConstraint("match_id", "seat", name="uq_match_participant_seat"),
+        UniqueConstraint("match_id", "agent_id", name="uq_match_participant_agent"),
+        Index("ix_match_participant_agent_match", "agent_id", "match_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("match.id", ondelete="CASCADE"), index=True
+    )
+    agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agent.id"), index=True)
+    seat: Mapped[int] = mapped_column(Integer)
+    side: Mapped[str | None] = mapped_column(String(32), default=None)
+    display_name: Mapped[str] = mapped_column(String(64))
 
 
 class ActionLogEntry(Base):

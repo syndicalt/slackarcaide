@@ -4,13 +4,17 @@ Action submission is agent-authenticated, validated by the engine host, and
 replayed deterministically from the persisted action ledger.
 """
 
+import base64
+import binascii
+import json
 import logging
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +23,7 @@ from app.db import get_session
 from app.engine.base import IllegalMove
 from app.engine.match_manager import manager
 from app.engine.registry import GAMES_CATALOG, REGISTRY
-from app.models import ActionLogEntry, Agent, Match
+from app.models import ActionLogEntry, Agent, Match, MatchParticipant
 from app.ratelimit import client_rate_limited, rate_limited, register_limit
 from app.services.messaging import post_message
 
@@ -73,6 +77,64 @@ def _detail(match: Match) -> dict:
         "started_at": match.started_at,
         "ended_at": match.ended_at,
         "created_at": match.created_at,
+    }
+
+
+def _history_cursor(match: Match) -> str:
+    ended_at = match.ended_at or match.created_at
+    if ended_at.tzinfo is None:
+        ended_at = ended_at.replace(tzinfo=UTC)
+    payload = json.dumps(
+        {"ended_at": ended_at.astimezone(UTC).isoformat(), "id": str(match.id)},
+        separators=(",", ":"),
+    ).encode()
+    return base64.urlsafe_b64encode(payload).decode().rstrip("=")
+
+
+def _decode_history_cursor(value: str) -> tuple[datetime, uuid.UUID]:
+    try:
+        raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+        payload = json.loads(raw)
+        ended_at = datetime.fromisoformat(payload["ended_at"])
+        match_id = uuid.UUID(payload["id"])
+        if ended_at.tzinfo is None:
+            ended_at = ended_at.replace(tzinfo=UTC)
+        return ended_at, match_id
+    except (
+        binascii.Error,
+        json.JSONDecodeError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        raise HTTPException(422, "invalid_history_cursor") from exc
+
+
+def _history_detail(match: Match, agent_id: uuid.UUID | None) -> dict:
+    result = match.result or {}
+    winner_agents = {str(value) for value in result.get("winner_agents", [])}
+    outcome = None
+    if agent_id is not None:
+        if str(agent_id) in winner_agents:
+            outcome = "win"
+        elif winner_agents:
+            outcome = "loss"
+        else:
+            outcome = "draw"
+    return {
+        "id": str(match.id),
+        "game_type": match.game_type,
+        "mode": match.mode,
+        "status": match.status,
+        "players": match.players,
+        "tick_or_move_count": match.tick_or_move_count,
+        "started_at": match.started_at,
+        "ended_at": match.ended_at,
+        "created_at": match.created_at,
+        "outcome": outcome,
+        "final_summary": result.get("final_summary"),
+        "winner_seats": result.get("winner_seats", []),
+        "replay_url": f"/matches/{match.id}/replay",
     }
 
 
@@ -141,6 +203,46 @@ async def list_matches(
     q = q.order_by(Match.created_at.desc()).limit(limit)
     matches = list((await session.scalars(q)).all())
     return {"matches": [_detail(m) for m in matches]}
+
+
+@router.get("/matches/history")
+async def match_history(
+    game: str | None = Query(None, max_length=32),
+    agent_id: uuid.UUID | None = Query(None),
+    before: str | None = Query(None, max_length=256),
+    limit: int = Query(24, ge=1, le=100),
+    _rate: None = Depends(client_rate_limited("match_read")),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Cursor-paginated completed games, globally or for one agent."""
+
+    if game is not None and game not in REGISTRY:
+        raise HTTPException(404, "unknown_game")
+    query = select(Match).where(Match.status == "finished", Match.ended_at.is_not(None))
+    if agent_id is not None:
+        query = query.join(MatchParticipant).where(MatchParticipant.agent_id == agent_id)
+    if game is not None:
+        query = query.where(Match.game_type == game)
+    if before is not None:
+        ended_at, match_id = _decode_history_cursor(before)
+        query = query.where(
+            or_(
+                Match.ended_at < ended_at,
+                and_(Match.ended_at == ended_at, Match.id < match_id),
+            )
+        )
+    rows = list(
+        (
+            await session.scalars(
+                query.order_by(Match.ended_at.desc(), Match.id.desc()).limit(limit + 1)
+            )
+        ).all()
+    )
+    page = rows[:limit]
+    return {
+        "matches": [_history_detail(match, agent_id) for match in page],
+        "next_cursor": _history_cursor(page[-1]) if len(rows) > limit else None,
+    }
 
 
 @router.get("/matches/{match_id}/pgn")
@@ -256,6 +358,16 @@ async def replay_match(
             frames.append(frame)
         frame_count += 1
 
+    collect(
+        {
+            "tick": 0,
+            "render": engine.get_render_data(),
+            "summary": engine.summary(),
+            "terminal": False,
+            "kind": "initial",
+        }
+    )
+
     if match.mode == "realtime":
         by_tick: dict[int, dict] = {}
         for r in rows:
@@ -270,6 +382,8 @@ async def replay_match(
                         "tick": t,
                         "render": engine.get_render_data(),
                         "summary": engine.summary(),
+                        "terminal": engine.is_terminal(),
+                        "kind": "terminal" if engine.is_terminal() else "action",
                     }
                 )
     else:
@@ -288,8 +402,25 @@ async def replay_match(
                     "intent": r.intent,
                     "render": engine.get_render_data(),
                     "summary": engine.summary(),
+                    "terminal": engine.is_terminal(),
+                    "kind": "terminal" if engine.is_terminal() else "action",
                 }
             )
+
+    result = match.result or {}
+    terminal_render = result.get("final_render")
+    replay_render = engine.get_render_data()
+    if terminal_render is not None and replay_render != terminal_render:
+        collect(
+            {
+                "tick": total,
+                "render": terminal_render,
+                "summary": result.get("final_summary") or engine.summary(),
+                "terminal": True,
+                "terminal_reason": "external_adjudication",
+                "kind": "terminal",
+            }
+        )
 
     next_offset = frame_offset + len(frames)
     return {

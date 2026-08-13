@@ -110,7 +110,8 @@ async def test_new_turnbased_game_persists_rates_and_replays(game: str) -> None:
             _rate=None,
             session=session,
         )
-        assert replay["frame_count"] == expected_moves
+        assert replay["frame_count"] == expected_moves + 1
+        assert replay["frames"][0]["kind"] == "initial"
         assert replay["frames"][-1]["render"] == expected_render
         if game == "battleship":
             for frame in replay["frames"][:-1]:
@@ -196,5 +197,6 @@ async def test_new_realtime_lifecycle_persists_batches_and_replays(
             _rate=None,
             session=session,
         )
-        assert replay["frame_count"] == 1
+        assert replay["frame_count"] == 2
+        assert replay["frames"][0]["kind"] == "initial"
         assert replay["frames"][-1]["render"] == expected_render

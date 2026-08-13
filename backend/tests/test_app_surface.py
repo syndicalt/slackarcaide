@@ -46,6 +46,7 @@ async def test_public_application_surface_and_openapi_contract() -> None:
     paths = schema.json()["paths"]
     assert "/auth/token" in paths
     assert "/matches" in paths
+    assert "/matches/history" in paths
     create_schema = paths["/matches"]["post"]["requestBody"]["content"]["application/json"][
         "schema"
     ]

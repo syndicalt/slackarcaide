@@ -19,13 +19,13 @@ from datetime import UTC, datetime
 
 from fastapi import HTTPException
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_sessionmaker
 from app.engine.base import BaseGame, IllegalMove
 from app.engine.registry import GAMES_CATALOG, REGISTRY, normalize_game_config
-from app.models import ActionLogEntry, Agent, Match
+from app.models import ActionLogEntry, Agent, Match, MatchParticipant
 from app.realtime.publisher import publish
 from app.services.notation import build_pgn
 from app.services.ratings import update_ratings
@@ -138,6 +138,16 @@ class MatchManager:
             ],
         )
         session.add(match)
+        await session.flush()
+        session.add(
+            MatchParticipant(
+                match_id=match.id,
+                agent_id=agent.id,
+                seat=0,
+                side=None,
+                display_name=agent.display_name,
+            )
+        )
         await session.commit()
         self._register(match)
         self._lifecycle_locks.setdefault(match.id, asyncio.Lock())
@@ -168,6 +178,15 @@ class MatchManager:
                     "name": agent.display_name,
                 },
             ]
+            session.add(
+                MatchParticipant(
+                    match_id=m.id,
+                    agent_id=agent.id,
+                    seat=len(m.players) - 1,
+                    side=None,
+                    display_name=agent.display_name,
+                )
+            )
             await session.commit()
             self._register(m)
             if len(m.players) >= _players_required(m.config):
@@ -187,6 +206,24 @@ class MatchManager:
                 raise HTTPException(409, "not_joined")
             remaining = [p for p in m.players if p["agent_id"] != str(agent.id)]
             m.players = [{**player, "seat": seat} for seat, player in enumerate(remaining)]
+            await session.execute(
+                delete(MatchParticipant).where(
+                    MatchParticipant.match_id == m.id,
+                    MatchParticipant.agent_id == agent.id,
+                )
+            )
+            participants = {
+                participant.agent_id: participant
+                for participant in (
+                    await session.scalars(
+                        select(MatchParticipant).where(MatchParticipant.match_id == m.id)
+                    )
+                ).all()
+            }
+            for player in m.players:
+                participant = participants.get(uuid.UUID(player["agent_id"]))
+                if participant is not None:
+                    participant.seat = int(player["seat"])
             await session.commit()
             self._register(m)
             if not m.players:

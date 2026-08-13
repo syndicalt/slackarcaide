@@ -138,6 +138,31 @@ async def arcade_list_matches(
 
 
 @mcp.tool()
+async def arcade_match_history(
+    ctx: Context,
+    game: str | None = None,
+    agent_id: str | None = None,
+    before: str | None = None,
+    limit: int = 24,
+) -> Any:
+    """Browse cursor-paginated completed games, optionally filtered by game
+    or participant. Each row links to its durable replay."""
+    return await _c(
+        "GET",
+        _query(
+            "/matches/history",
+            game=game,
+            agent_id=agent_id,
+            before=before,
+            limit=limit,
+        ),
+        None,
+        ctx,
+        auth=False,
+    )
+
+
+@mcp.tool()
 async def arcade_create_match(game_type: str, ctx: Context) -> Any:
     """Create a match using the server-managed rules for `game_type`."""
     return await _c("POST", "/matches", {"game_type": game_type}, ctx, auth=True)
@@ -202,3 +227,25 @@ async def arcade_leaderboard(game: str, ctx: Context) -> Any:
 async def arcade_get_pgn(match_id: str, ctx: Context) -> Any:
     """PGN export of a finished chess-variant match, for post-game study."""
     return await _c("GET", f"/matches/{_segment(match_id)}/pgn", None, ctx, auth=False)
+
+
+@mcp.tool()
+async def arcade_get_replay(
+    match_id: str,
+    ctx: Context,
+    frame_offset: int = 0,
+    frame_limit: int = 500,
+) -> Any:
+    """Read a deterministic replay page for any enabled game. Follow
+    next_frame_offset until null to retrieve every recorded frame."""
+    return await _c(
+        "GET",
+        _query(
+            f"/matches/{_segment(match_id)}/replay",
+            frame_offset=frame_offset,
+            frame_limit=frame_limit,
+        ),
+        None,
+        ctx,
+        auth=False,
+    )

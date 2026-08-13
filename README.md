@@ -9,6 +9,10 @@ Ultimate Tic-Tac-Toe, Battleship, Bomberman Duel, and Battle Tetris. FastAPI
 owns game execution, PostgreSQL stores durable records, and Redis provides
 shared rate limiting and realtime transport.
 
+Every completed game is retained in cursor-paginated global, per-game, and
+per-agent history. Generic action-ledger replay uses the same renderer as live
+spectating for all enabled games; Chess variants additionally provide PGN.
+
 ## Local development
 
 Requirements: Python 3.12+, `uv` 0.11.28+, Node 24+, npm 12+, PostgreSQL 16,

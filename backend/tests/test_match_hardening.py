@@ -27,7 +27,7 @@ from app.engine.games.chess import Chess
 from app.engine.games.pong import Pong
 from app.engine.match_manager import MatchManager
 from app.engine.registry import normalize_game_config
-from app.models import ActionLogEntry, Agent, Match, Rating, RatingEvent
+from app.models import ActionLogEntry, Agent, Match, MatchParticipant, Rating, RatingEvent
 from app.services.ratings import seed_initial_ratings, update_ratings
 
 
@@ -305,6 +305,14 @@ async def test_concurrent_join_has_one_winner_and_one_rejection(
         assert persisted.status == "running"
         assert len(persisted.players) == 2
         assert len({player["seat"] for player in persisted.players}) == 2
+        history_seats = list(
+            (
+                await session.scalars(
+                    select(MatchParticipant.seat).where(MatchParticipant.match_id == lobby_id)
+                )
+            ).all()
+        )
+        assert sorted(history_seats) == [0, 1]
 
     task = mgr._tasks.get(lobby_id)
     mgr._finish_cleanup(lobby_id)
