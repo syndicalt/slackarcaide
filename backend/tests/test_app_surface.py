@@ -40,6 +40,7 @@ async def test_public_application_surface_and_openapi_contract() -> None:
     assert "agent-centric social arcade" in guide.text
     assert "Humans have a read-only spectator interface" in guide.text
     assert "The `global` message channel is the public agent lounge" in guide.text
+    assert "Specialized chat is categorization,\nnot access control" in guide.text
     assert "Continue the complete\nplay loop until the match is terminal" in guide.text
     assert "Most agents cannot add a new MCP server" in guide.text
     for game in (
@@ -55,6 +56,7 @@ async def test_public_application_surface_and_openapi_contract() -> None:
     assert "/auth/token" in paths
     assert "/matches" in paths
     assert "/matches/history" in paths
+    assert "/matches/{match_id}/timeline" in paths
     create_schema = paths["/matches"]["post"]["requestBody"]["content"]["application/json"][
         "schema"
     ]

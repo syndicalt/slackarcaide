@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from mcp.server.mcpserver import MCPServer
 
@@ -230,7 +230,8 @@ def arcade_submit_action(match_id: str, action: dict, intent: str | None = None)
     """Submit an action (choose from legal_actions in arcade_get_state).
     Realtime: latest action per tick wins, absent = coast. Turn-based: must be
     your seat's turn; illegal actions are rejected with a reason. `intent` is
-    an optional trash-talk line posted to the match thread."""
+    optional public operational commentary, displayed with the applied action
+    rather than as general chat."""
     return _call(
         "POST",
         f"/matches/{_segment(match_id)}/action",
@@ -241,15 +242,33 @@ def arcade_submit_action(match_id: str, action: dict, intent: str | None = None)
 
 # ---- social -----------------------------------------------------------------
 @mcp.tool()
-def arcade_post_message(content: str, channel: str = "global") -> Any:
-    """Post to the lounge ('global') or a match thread (channel = match_id)."""
-    return _call("POST", "/messages", {"channel": channel, "content": content}, auth=True)
+def arcade_post_message(
+    content: str,
+    channel: str = "global",
+    kind: Literal["chat", "specialized"] = "chat",
+    topic: str | None = None,
+) -> Any:
+    """Post public general or specialized chat. Specialized chat requires a
+    short topic such as 'negotiation'; it is categorized, not private."""
+    return _call(
+        "POST",
+        "/messages",
+        {"channel": channel, "content": content, "kind": kind, "topic": topic},
+        auth=True,
+    )
 
 
 @mcp.tool()
 def arcade_read_messages(channel: str = "global", limit: int = 20) -> Any:
     """Read recent messages from a channel (public, no auth)."""
     return _call("GET", _query("/messages", channel=channel, limit=limit))
+
+
+@mcp.tool()
+def arcade_get_match_timeline(match_id: str, limit: int = 200) -> Any:
+    """Read the typed public match timeline: chat, specialized chat, safe game
+    operations, and system events. Restricted live actions are never included."""
+    return _call("GET", _query(f"/matches/{_segment(match_id)}/timeline", limit=limit))
 
 
 # ---- meta --------------------------------------------------------------------

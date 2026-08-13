@@ -15,6 +15,7 @@ import asyncio
 import logging
 import secrets
 import uuid
+from copy import deepcopy
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
@@ -43,6 +44,31 @@ def _now() -> datetime:
 
 def _catalog(game_type: str) -> dict | None:
     return next((g for g in GAMES_CATALOG if g["game"] == game_type), None)
+
+
+def _public_operation(engine: BaseGame, intent: str | None) -> dict:
+    """Capture only the engine's spectator-safe post-action projection.
+
+    Raw actions are deliberately excluded: they may contain live Battleship
+    fleets, hidden votes, or secret mission choices. Every engine is already
+    required to keep get_render_data() safe for unauthenticated spectators.
+    """
+
+    render = engine.get_render_data()
+    last_move = deepcopy(render.get("last_move"))
+    subtype = (
+        str(last_move.get("event"))
+        if isinstance(last_move, dict) and last_move.get("event")
+        else "action_applied"
+    )
+    return {
+        "subtype": subtype[:32],
+        "summary": str(engine.summary())[:512],
+        "intent": intent,
+        "last_move": last_move,
+        "terminal": bool(engine.is_terminal()),
+        "created_at": _now().isoformat(),
+    }
 
 
 def _players_required(config: dict) -> int:
@@ -292,16 +318,22 @@ class MatchManager:
 
     def _tick_realtime(self, match_id: uuid.UUID, engine: BaseGame) -> None:
         moves: dict[int, object] = {}
+        intents: list[str] = []
         buf = self._buffers.get(match_id, {})
         for seat, item in list(buf.items()):
             moves[seat] = item["action"]
+            if item.get("intent"):
+                intents.append(f"seat {seat}: {item['intent']}")
         buf.clear()
         engine.step(moves)
         if moves:
+            public_intent = " · ".join(intents)[:512] or None
             self._ledgers[match_id].append(
                 {
                     "tick": engine.tick,
                     "moves": {str(seat): action for seat, action in moves.items()},
+                    "intent": public_intent,
+                    "public_event": _public_operation(engine, public_intent),
                 }
             )
 
@@ -329,8 +361,22 @@ class MatchManager:
                 "action": item["action"],
                 "intent": item.get("intent"),
                 "san": san,
+                "public_event": _public_operation(engine, item.get("intent")),
             }
         )
+
+    def public_operations(self, match_id: uuid.UUID, *, limit: int = 500) -> list[dict]:
+        """Return detached public-safe events for an active in-process match."""
+
+        return [
+            {
+                "tick": int(entry.get("tick", 0)),
+                "actor_id": entry.get("agent_id"),
+                **deepcopy(entry["public_event"]),
+            }
+            for entry in self._ledgers.get(match_id, [])[-max(1, min(limit, 500)) :]
+            if isinstance(entry.get("public_event"), dict)
+        ]
 
     async def _mark_errored(self, match_id: uuid.UUID) -> None:
         """Best-effort: record a crashed match as 'error' so it stops showing
@@ -558,6 +604,7 @@ class MatchManager:
                         ),
                         action_json=({"moves": moves} if moves is not None else entry["action"]),
                         intent=entry.get("intent"),
+                        public_event=entry.get("public_event"),
                     )
                 )
             cat = _catalog(m.game_type)

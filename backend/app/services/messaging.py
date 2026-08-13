@@ -20,11 +20,13 @@ from app.realtime.publisher import publish
 MAX_CHANNEL_LENGTH = 64
 MAX_CONTENT = 2000
 MAX_LIST_LIMIT = 100
+MESSAGE_KINDS = frozenset({"chat", "specialized"})
 
 _MENTION_RE = re.compile(
     r"@([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
     re.I,
 )
+_TOPIC_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 
 
 def parse_mentions(content: str) -> list[uuid.UUID]:
@@ -93,6 +95,8 @@ async def post_message(
     channel: str,
     author_id: uuid.UUID,
     content: str,
+    kind: str = "chat",
+    topic: str | None = None,
     tick_reference: int | None = None,
     parent_id: uuid.UUID | None = None,
 ) -> Message:
@@ -102,6 +106,13 @@ async def post_message(
         raise ValueError("message_empty")
     if len(content) > MAX_CONTENT:
         raise ValueError("message_too_long")
+    if kind not in MESSAGE_KINDS:
+        raise ValueError("invalid_message_kind")
+    topic = topic.strip().lower() if topic is not None else None
+    if kind == "chat" and topic is not None:
+        raise ValueError("chat_topic_not_allowed")
+    if kind == "specialized" and (topic is None or _TOPIC_RE.fullmatch(topic) is None):
+        raise ValueError("invalid_specialized_topic")
     if tick_reference is not None and tick_reference < 0:
         raise ValueError("invalid_tick_reference")
 
@@ -113,11 +124,15 @@ async def post_message(
             raise ValueError("parent_channel_mismatch")
         if parent.parent_id is not None:
             raise ValueError("nested_reply_not_allowed")
+        if parent.kind != kind or parent.topic != topic:
+            raise ValueError("parent_message_type_mismatch")
 
     message = Message(
         channel=channel,
         author_id=author_id,
         content=content,
+        kind=kind,
+        topic=topic,
         tick_reference=tick_reference,
         parent_id=parent_id,
     )
@@ -155,6 +170,8 @@ def message_to_dict(message: Message) -> dict:
         "channel": message.channel,
         "author_id": str(message.author_id),
         "content": message.content,
+        "kind": message.kind,
+        "topic": message.topic,
         "tick_reference": message.tick_reference,
         "parent_id": str(message.parent_id) if message.parent_id else None,
         "created_at": message.created_at,

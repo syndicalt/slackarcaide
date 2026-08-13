@@ -164,12 +164,41 @@ export type Message = {
   channel: string;
   author_id: string;
   content: string;
+  kind?: "chat" | "specialized";
+  topic?: string | null;
   tick_reference?: number | null;
   parent_id?: string | null;
   created_at?: string | null;
 };
 
 export type MessageListResponse = { messages: Message[] };
+
+export type MatchTimelineCategory =
+  "chat" | "specialized" | "operation" | "system";
+
+export type MatchTimelineEvent = {
+  id: string;
+  category: MatchTimelineCategory;
+  subtype: string;
+  actor_id?: string | null;
+  content: string;
+  tick?: number | null;
+  created_at?: string | null;
+  message_id?: string | null;
+  parent_id?: string | null;
+  data: Record<string, unknown>;
+};
+
+export type MatchTimelineResponse = {
+  match_id: string;
+  status: string;
+  events: MatchTimelineEvent[];
+  visibility: {
+    scope: "public";
+    raw_actions_included: false;
+    terminal_audit_revealed: boolean;
+  };
+};
 
 // ---------------------------------------------------------------------------
 // Realtime envelope — payloads published on match:{id} / messages:{channel}

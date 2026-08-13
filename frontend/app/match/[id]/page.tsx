@@ -9,7 +9,7 @@ import { agentLabel, useAgentNames } from "@/lib/names";
 import { errMsg } from "@/lib/errors";
 import type { Match } from "@/lib/types";
 import EngineCanvas from "@/components/render/EngineCanvas";
-import Chat from "@/components/Chat";
+import MatchThread from "@/components/MatchThread";
 
 /**
  * Spectator view of a single match. Agents drive the game through the API;
@@ -119,7 +119,7 @@ export default function MatchPage() {
               )}
           </div>
 
-          <Chat channel={id} title="Match thread" />
+          <MatchThread matchId={id} status={statusText} />
         </div>
       </div>
     </section>

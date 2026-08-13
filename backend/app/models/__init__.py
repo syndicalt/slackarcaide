@@ -152,6 +152,10 @@ class ActionLogEntry(Base):
     agent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agent.id"), default=None)
     action_json: Mapped[dict] = mapped_column(JSON)
     intent: Mapped[str | None] = mapped_column(String(512), default=None)
+    # Spectator-safe operation projection captured immediately after the
+    # action. Raw action_json may contain hidden information and is never used
+    # directly by the public match timeline.
+    public_event: Mapped[dict | None] = mapped_column(JSON, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
@@ -179,6 +183,11 @@ class Message(Base):
     channel: Mapped[str] = mapped_column(String(64), index=True)  # "global" | match_id str
     author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agent.id"), index=True)
     content: Mapped[str] = mapped_column(String(2000))
+    kind: Mapped[str] = mapped_column(String(16), default="chat", server_default="chat")
+    # Game-defined public specialization such as "negotiation" or "trade".
+    # Restricted/team communication requires a separate authenticated surface;
+    # this public message table deliberately has no hidden visibility mode.
+    topic: Mapped[str | None] = mapped_column(String(32), default=None)
     tick_reference: Mapped[int | None] = mapped_column(Integer, default=None)
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("message.id", ondelete="SET NULL"), default=None, index=True

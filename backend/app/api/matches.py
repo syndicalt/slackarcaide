@@ -7,7 +7,6 @@ replayed deterministically from the persisted action ledger.
 import base64
 import binascii
 import json
-import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -15,7 +14,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import and_, or_, select
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_agent, get_optional_agent
@@ -23,12 +21,10 @@ from app.db import get_session
 from app.engine.base import IllegalMove
 from app.engine.match_manager import manager
 from app.engine.registry import GAMES_CATALOG, REGISTRY
-from app.models import ActionLogEntry, Agent, Match, MatchParticipant
+from app.models import ActionLogEntry, Agent, Match, MatchParticipant, Message
 from app.ratelimit import client_rate_limited, rate_limited, register_limit
-from app.services.messaging import post_message
 
 router = APIRouter(prefix="", tags=["matches"])
-logger = logging.getLogger(__name__)
 
 register_limit("match_create", 20, 60)
 register_limit("match_join_leave", 60, 60)
@@ -300,6 +296,195 @@ async def get_match_state(
     )
 
 
+def _timeline_timestamp(value: datetime | str | None, fallback: datetime) -> str:
+    if isinstance(value, datetime):
+        timestamp = value
+    elif isinstance(value, str):
+        try:
+            timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            timestamp = fallback
+    else:
+        timestamp = fallback
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    return timestamp.astimezone(UTC).isoformat()
+
+
+@router.get("/matches/{match_id}/timeline")
+async def match_timeline(
+    match_id: uuid.UUID,
+    limit: int = Query(200, ge=1, le=500),
+    _rate: None = Depends(client_rate_limited("match_read")),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Public-safe typed match activity for generic spectator threads.
+
+    This endpoint never serializes raw action_json. Engines may contain hidden
+    setup, votes, or role actions there. Running operations come from the
+    engine's spectator-safe projection; finished operations use that same
+    projection captured in the durable action ledger.
+    """
+
+    match = await manager.get(match_id, session)
+    if match is None:
+        raise HTTPException(404, "match_not_found")
+
+    action_rows: list[ActionLogEntry] = []
+    if match.status not in {"lobby", "running"}:
+        action_rows = list(
+            (
+                await session.scalars(
+                    select(ActionLogEntry)
+                    .where(ActionLogEntry.match_id == match_id)
+                    .order_by(ActionLogEntry.tick_or_move.desc(), ActionLogEntry.id.desc())
+                    .limit(limit)
+                )
+            ).all()
+        )
+
+    message_rows = list(
+        (
+            await session.scalars(
+                select(Message)
+                .where(Message.channel == str(match_id))
+                .order_by(Message.created_at.desc(), Message.id.desc())
+                .limit(limit)
+            )
+        ).all()
+    )
+    # Before typed timelines, action intent was copied into Message. Correlate
+    # the author, content, and adjacent tick with the durable ledger so old
+    # matches do not render machine activity as agent conversation.
+    legacy_intents: dict[tuple[str, str, int], int] = {}
+    for row in action_rows:
+        if row.agent_id is None or not row.intent:
+            continue
+        for tick_reference in {row.tick_or_move - 1, row.tick_or_move}:
+            if tick_reference >= 0:
+                legacy_intents[(str(row.agent_id), row.intent, tick_reference)] = row.id
+
+    legacy_message_action_ids: set[int] = set()
+    events: list[dict] = []
+    for message in message_rows:
+        legacy_action_id = legacy_intents.get(
+            (str(message.author_id), message.content, message.tick_reference or 0)
+        )
+        if legacy_action_id is not None:
+            legacy_message_action_ids.add(legacy_action_id)
+        category = (
+            "operation"
+            if legacy_action_id is not None
+            else "specialized"
+            if message.kind == "specialized"
+            else "chat"
+        )
+        events.append(
+            {
+                "id": f"message:{message.id}",
+                "category": category,
+                "subtype": (
+                    "action_intent" if legacy_action_id is not None else message.topic or "general"
+                ),
+                "actor_id": str(message.author_id),
+                "content": message.content,
+                "tick": message.tick_reference,
+                "created_at": _timeline_timestamp(message.created_at, match.created_at),
+                "message_id": str(message.id),
+                "parent_id": str(message.parent_id) if message.parent_id else None,
+                "data": {},
+            }
+        )
+
+    if match.status in {"lobby", "running"}:
+        operations = manager.public_operations(match_id, limit=limit)
+    else:
+        operations = [
+            {
+                "action_id": row.id,
+                "tick": row.tick_or_move,
+                "actor_id": str(row.agent_id) if row.agent_id else None,
+                "intent": row.intent,
+                "created_at": row.created_at,
+                **(row.public_event if isinstance(row.public_event, dict) else {}),
+            }
+            for row in action_rows
+            if row.id not in legacy_message_action_ids
+        ]
+
+    players_by_seat = {int(player["seat"]): player for player in match.players}
+    for index, operation in enumerate(operations):
+        last_move = operation.get("last_move")
+        public_seat = last_move.get("seat") if isinstance(last_move, dict) else None
+        player = players_by_seat.get(public_seat) if isinstance(public_seat, int) else None
+        actor_id = operation.get("actor_id") or (player.get("agent_id") if player else None)
+        summary = str(operation.get("summary") or "Game action applied")[:512]
+        intent = operation.get("intent")
+        events.append(
+            {
+                "id": f"operation:{operation.get('tick', 0)}:{index}",
+                "category": "operation",
+                "subtype": str(operation.get("subtype") or "action_applied")[:32],
+                "actor_id": actor_id,
+                "content": str(intent)[:512] if intent else summary,
+                "tick": int(operation.get("tick", 0)),
+                "created_at": _timeline_timestamp(operation.get("created_at"), match.created_at),
+                "message_id": None,
+                "parent_id": None,
+                "data": {
+                    "summary": summary,
+                    "last_move": last_move,
+                    "terminal": bool(operation.get("terminal", False)),
+                },
+            }
+        )
+
+    events.extend(
+        [
+            {
+                "id": "system:created",
+                "category": "system",
+                "subtype": "match_created",
+                "actor_id": None,
+                "content": f"{match.game_type} table opened",
+                "tick": 0,
+                "created_at": _timeline_timestamp(match.created_at, match.created_at),
+                "message_id": None,
+                "parent_id": None,
+                "data": {"status": "lobby"},
+            }
+        ]
+    )
+    if match.status == "finished" and match.ended_at is not None:
+        result = match.result or {}
+        events.append(
+            {
+                "id": "system:finished",
+                "category": "system",
+                "subtype": "match_finished",
+                "actor_id": None,
+                "content": result.get("final_summary") or f"{match.game_type} finished",
+                "tick": match.tick_or_move_count,
+                "created_at": _timeline_timestamp(match.ended_at, match.created_at),
+                "message_id": None,
+                "parent_id": None,
+                "data": {"status": "finished"},
+            }
+        )
+
+    events.sort(key=lambda event: (event["created_at"], event["id"]))
+    return {
+        "match_id": str(match.id),
+        "status": match.status,
+        "events": events[-limit:],
+        "visibility": {
+            "scope": "public",
+            "raw_actions_included": False,
+            "terminal_audit_revealed": match.status == "finished",
+        },
+    }
+
+
 @router.post("/matches/{match_id}/action")
 async def submit_action(
     match_id: uuid.UUID,
@@ -311,19 +496,7 @@ async def submit_action(
     match = await manager.get(match_id, session)
     if match is None:
         raise HTTPException(404, "match_not_found")
-    observation = await manager.submit_action(match, agent, body.action, body.intent)
-    if body.intent:
-        try:
-            await post_message(
-                session,
-                channel=str(match_id),
-                author_id=agent.id,
-                content=body.intent,
-                tick_reference=observation.get("tick"),
-            )
-        except (ValueError, SQLAlchemyError):
-            logger.exception("failed to persist action intent for match %s", match_id)
-    return observation
+    return await manager.submit_action(match, agent, body.action, body.intent)
 
 
 @router.get("/matches/{match_id}/replay")

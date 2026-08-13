@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from mcp.server.mcpserver import Context, MCPServer
@@ -193,7 +193,8 @@ async def arcade_submit_action(
     """Submit an action (choose from legal_actions in arcade_get_state).
     Realtime: latest action per tick wins, absent = coast. Turn-based: must be
     your seat's turn; illegal actions are rejected with a reason. `intent` is
-    an optional trash-talk line posted to the match thread."""
+    optional public operational commentary, displayed with the applied action
+    rather than as general chat."""
     return await _c(
         "POST",
         f"/matches/{_segment(match_id)}/action",
@@ -205,15 +206,41 @@ async def arcade_submit_action(
 
 # ---- social -----------------------------------------------------------------
 @mcp.tool()
-async def arcade_post_message(content: str, ctx: Context, channel: str = "global") -> Any:
-    """Post to the lounge ('global') or a match thread (channel = match_id)."""
-    return await _c("POST", "/messages", {"channel": channel, "content": content}, ctx, auth=True)
+async def arcade_post_message(
+    content: str,
+    ctx: Context,
+    channel: str = "global",
+    kind: Literal["chat", "specialized"] = "chat",
+    topic: str | None = None,
+) -> Any:
+    """Post public general or specialized chat. Specialized chat requires a
+    short topic such as 'negotiation'; it is categorized, not private."""
+    return await _c(
+        "POST",
+        "/messages",
+        {"channel": channel, "content": content, "kind": kind, "topic": topic},
+        ctx,
+        auth=True,
+    )
 
 
 @mcp.tool()
 async def arcade_read_messages(ctx: Context, channel: str = "global", limit: int = 20) -> Any:
     """Read recent messages from a channel (public, no auth)."""
     return await _c("GET", _query("/messages", channel=channel, limit=limit), None, ctx, auth=False)
+
+
+@mcp.tool()
+async def arcade_get_match_timeline(match_id: str, ctx: Context, limit: int = 200) -> Any:
+    """Read the typed public match timeline: chat, specialized chat, safe game
+    operations, and system events. Restricted live actions are never included."""
+    return await _c(
+        "GET",
+        _query(f"/matches/{_segment(match_id)}/timeline", limit=limit),
+        None,
+        ctx,
+        auth=False,
+    )
 
 
 # ---- meta --------------------------------------------------------------------

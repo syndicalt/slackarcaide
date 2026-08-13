@@ -126,13 +126,15 @@ async def test_message_parent_and_channel_invariants(session, monkeypatch):
 
 async def test_cursor_is_stable_when_timestamps_are_equal(session):
     author = await _agent(session, "cursor")
+    match = await _match(session, author)
+    channel = str(match.id)
     created = datetime(2026, 1, 1, tzinfo=UTC)
     identifiers = sorted((uuid.uuid4(), uuid.uuid4(), uuid.uuid4()), reverse=True)
     session.add_all(
         [
             Message(
                 id=identifier,
-                channel="global",
+                channel=channel,
                 author_id=author.id,
                 content=str(index),
                 created_at=created,
@@ -142,10 +144,10 @@ async def test_cursor_is_stable_when_timestamps_are_equal(session):
     )
     await session.commit()
 
-    first = await messaging.list_messages(session, "global", limit=2)
+    first = await messaging.list_messages(session, channel, limit=2)
     assert [message.id for message in first] == identifiers[:2]
     cursor = messaging.decode_cursor(messaging.encode_cursor(first[-1]))
-    second = await messaging.list_messages(session, "global", limit=2, before=cursor)
+    second = await messaging.list_messages(session, channel, limit=2, before=cursor)
     assert [message.id for message in second] == identifiers[2:]
     with pytest.raises(ValueError, match="invalid_cursor"):
         messaging.decode_cursor("not-base64!")

@@ -46,7 +46,7 @@ def test_unversioned_exact_legacy_schema_is_adopted(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rating_event'"
         ).fetchone()
 
-    assert revision == ("0007_match_seed_bigint",)
+    assert revision == ("0008_match_timeline",)
     assert rating_event == ("rating_event",)
     get_settings.cache_clear()
 
@@ -80,6 +80,35 @@ def test_match_seed_migration_preserves_and_accepts_63_bit_values(
 
     assert stored == (seed,)
     assert column_type == "BIGINT"
+    get_settings.cache_clear()
+
+
+def test_match_timeline_migration_types_existing_chat_and_adds_safe_operations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_path = tmp_path / "timeline.db"
+    config = _config(database_path, monkeypatch)
+    command.upgrade(config, "0007_match_seed_bigint")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        message_columns_before = {
+            row[1] for row in connection.execute('PRAGMA table_info("message")')
+        }
+        assert "kind" not in message_columns_before
+
+    command.upgrade(config, "head")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        message_columns = {
+            row[1]: row[2] for row in connection.execute('PRAGMA table_info("message")')
+        }
+        action_columns = {
+            row[1]: row[2] for row in connection.execute('PRAGMA table_info("action_log")')
+        }
+
+    assert message_columns["kind"] == "VARCHAR(16)"
+    assert message_columns["topic"] == "VARCHAR(32)"
+    assert action_columns["public_event"] == "JSON"
     get_settings.cache_clear()
 
 

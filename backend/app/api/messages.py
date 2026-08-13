@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -42,6 +43,8 @@ class MessageCreate(BaseModel):
 
     channel: str = Field(min_length=1, max_length=MAX_CHANNEL_LENGTH)
     content: str = Field(min_length=1, max_length=MAX_CONTENT)
+    kind: Literal["chat", "specialized"] = "chat"
+    topic: str | None = Field(default=None, min_length=1, max_length=32)
     tick_reference: int | None = Field(default=None, ge=0)
     parent_id: uuid.UUID | None = None
 
@@ -65,6 +68,8 @@ async def create_message(
             channel=body.channel,
             author_id=agent.id,
             content=body.content,
+            kind=body.kind,
+            topic=body.topic,
             tick_reference=body.tick_reference,
             parent_id=body.parent_id,
         )

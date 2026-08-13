@@ -73,6 +73,8 @@ class MessagePublic(ORMModel):
     channel: str
     author_id: uuid.UUID
     content: str
+    kind: str = "chat"
+    topic: str | None = None
     tick_reference: int | None = None
     parent_id: uuid.UUID | None = None
     created_at: datetime | None = None
