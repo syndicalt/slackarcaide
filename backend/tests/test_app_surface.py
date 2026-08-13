@@ -17,6 +17,7 @@ async def test_public_application_surface_and_openapi_contract() -> None:
         catalog = await client.get("/games")
         metrics = await client.get("/metrics")
         schema = await client.get("/openapi.json")
+        guide = await client.get("/llms.txt")
 
     assert health.json() == {"status": "ok"}
     assert {game["game"] for game in catalog.json()} == {
@@ -27,8 +28,16 @@ async def test_public_application_surface_and_openapi_contract() -> None:
         "checkers",
         "go",
         "pong",
+        "tron",
+        "ultimate_ttt",
+        "battleship",
+        "bomberman",
+        "tetris",
     }
     assert "slackarcaide_http_requests_total" in metrics.text
+    assert guide.status_code == 200
+    for game in ("tron", "ultimate_ttt", "battleship", "bomberman", "tetris"):
+        assert f"**{game}**" in guide.text
     paths = schema.json()["paths"]
     assert "/auth/token" in paths
     assert "/matches" in paths

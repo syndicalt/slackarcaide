@@ -360,8 +360,17 @@ class MatchManager:
             def _match(candidate):
                 return _norm(candidate) == _norm(action)
 
-            if legal and not any(_match(c) for c in legal):
-                raise HTTPException(status_code=400, detail=f"invalid_move: {action}")
+            if engine.legal_actions_exhaustive(seat):
+                if not any(_match(candidate) for candidate in legal):
+                    raise HTTPException(status_code=400, detail=f"invalid_move: {action}")
+            else:
+                try:
+                    engine.validate_action(action, seat)
+                except IllegalMove as exc:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={"code": exc.code, "message": exc.message},
+                    ) from exc
             if seat in self._buffers[match.id]:
                 raise HTTPException(409, "action_pending")
             self._buffers[match.id][seat] = {
@@ -375,7 +384,7 @@ class MatchManager:
                     "action": action,
                     "intent": intent,
                 }
-        return self.observation(match)
+        return self.observation(match, viewer_agent_id=str(agent.id))
 
     # ---- reads ----------------------------------------------------------------
 
@@ -395,7 +404,15 @@ class MatchManager:
                 return p["agent_id"]
         return None
 
-    def observation(self, match: Match) -> dict:
+    def observation(self, match: Match, viewer_agent_id: str | None = None) -> dict:
+        perspective = next(
+            (
+                int(player["seat"])
+                for player in match.players
+                if viewer_agent_id is not None and player["agent_id"] == viewer_agent_id
+            ),
+            None,
+        )
         engine = self._engines.get(match.id)
         if engine is None:
             result = match.result or {}
@@ -406,7 +423,7 @@ class MatchManager:
                 "tick": match.tick_or_move_count or 0,
                 "status": match.status,
                 "players": match.players,
-                "your_player_id": None,
+                "your_player_id": viewer_agent_id if perspective is not None else None,
                 "state": {},
                 "legal_actions": [],
                 "scores": result.get("scores", {}),
@@ -415,7 +432,7 @@ class MatchManager:
                 "time": None,
                 "render": result.get("final_render", {}),
             }
-        obs = engine.observe()
+        obs = engine.observe(perspective=perspective)
         tick = getattr(engine, "tick", getattr(engine, "move_count", 0))
         return {
             "match_id": str(match.id),
@@ -424,7 +441,7 @@ class MatchManager:
             "tick": tick,
             "status": match.status,
             "players": match.players,
-            "your_player_id": None,  # shared broadcast; per-seat via API if needed
+            "your_player_id": viewer_agent_id if perspective is not None else None,
             "state": obs.get("state", {}),
             "legal_actions": obs.get("legal_actions", []),
             "scores": obs.get("scores", {}),

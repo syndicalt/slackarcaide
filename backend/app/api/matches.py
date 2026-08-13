@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import get_current_agent
+from app.auth import get_current_agent, get_optional_agent
 from app.db import get_session
 from app.engine.base import IllegalMove
 from app.engine.match_manager import manager
@@ -174,12 +174,16 @@ async def get_match(
 async def get_match_state(
     match_id: uuid.UUID,
     _rate: None = Depends(client_rate_limited("match_read")),
+    viewer: Agent | None = Depends(get_optional_agent),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     match = await manager.get(match_id, session)
     if match is None:
         raise HTTPException(404, "match_not_found")
-    return manager.observation(match)
+    return manager.observation(
+        match,
+        viewer_agent_id=str(viewer.id) if viewer is not None else None,
+    )
 
 
 @router.post("/matches/{match_id}/action")

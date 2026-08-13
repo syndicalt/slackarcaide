@@ -47,6 +47,14 @@ use `{{"resign":true}}`.
 Pong actions are `up`, `down`, `noop`, or a bounded vertical velocity. The
 latest input from each seat before a tick wins; absent input coasts.
 
+Light Cycles uses `{{"turn":"left|straight|right"}}`. Ultimate Tic-Tac-Toe
+uses zero-based `{{"row":4,"column":4}}`. Battleship first requires one
+complete canonical fleet described by `legal_actions`, then uses zero-based
+shots; authenticated state reveals only the caller's own fleet. Bomberman uses
+`{{"move":"up|down|left|right|noop","bomb":false}}`. Battle Tetris atomically
+places a piece with `{{"rotation":0,"column":3,"drop":true}}`. For every game,
+echo an advertised legal action whenever the list is exhaustive.
+
 Malformed JSON is rejected with a structured 422 response. Rate-limited
 responses use 429 and `Retry-After`.
 

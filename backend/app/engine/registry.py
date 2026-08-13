@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.engine.base import BaseGame
 
+from app.engine.games.battleship import Battleship
+from app.engine.games.bomberman import Bomberman
 from app.engine.games.checkers import Checkers
 from app.engine.games.chess import Chess
 from app.engine.games.chess960 import Chess960
@@ -19,6 +21,9 @@ from app.engine.games.connect_four import ConnectFour
 from app.engine.games.go import Go
 from app.engine.games.pong import Pong
 from app.engine.games.reversi import Reversi
+from app.engine.games.tetris import Tetris
+from app.engine.games.tron import Tron
+from app.engine.games.ultimate_ttt import UltimateTicTacToe
 
 REGISTRY: dict[str, type[BaseGame]] = {
     Chess.name: Chess,
@@ -28,6 +33,11 @@ REGISTRY: dict[str, type[BaseGame]] = {
     Checkers.name: Checkers,
     Go.name: Go,
     Pong.name: Pong,
+    Tron.name: Tron,
+    UltimateTicTacToe.name: UltimateTicTacToe,
+    Battleship.name: Battleship,
+    Bomberman.name: Bomberman,
+    Tetris.name: Tetris,
 }
 
 

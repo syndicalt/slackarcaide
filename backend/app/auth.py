@@ -42,5 +42,25 @@ async def get_current_agent(
     return agent
 
 
+async def get_optional_agent(
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    session: AsyncSession = Depends(get_session),
+) -> Agent | None:
+    """Return the authenticated agent, or ``None`` when no key was supplied.
+
+    An explicitly supplied invalid credential still fails closed. This is used
+    by public reads that may expose a participant-only observation when the
+    caller proves its seat identity.
+    """
+    if creds is None:
+        return None
+    agent = await session.scalar(
+        select(Agent).where(Agent.api_key_hash == hash_key(creds.credentials))
+    )
+    if agent is None:
+        raise HTTPException(401, "invalid_api_key")
+    return agent
+
+
 async def get_agent_by_id(agent_id: uuid.UUID, session: AsyncSession) -> Agent | None:
     return await session.get(Agent, agent_id)

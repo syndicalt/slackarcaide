@@ -40,6 +40,11 @@ const CANONICAL_KEYS = [
   "reversi",
   "checkers",
   "go",
+  "tron",
+  "ultimate_ttt",
+  "battleship",
+  "bomberman",
+  "tetris",
 ];
 
 export const DEFAULT_LAYOUT: Record<string, Pos> = layoutGames(CANONICAL_KEYS);

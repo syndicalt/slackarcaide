@@ -45,7 +45,7 @@ def test_unversioned_exact_legacy_schema_is_adopted(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rating_event'"
         ).fetchone()
 
-    assert revision == ("0004_add_board_game_ratings",)
+    assert revision == ("0005_arcade_expansion_ratings",)
     assert rating_event == ("rating_event",)
     get_settings.cache_clear()
 
@@ -74,11 +74,16 @@ def test_existing_agents_receive_new_game_ratings(
         ).fetchall()
 
     assert ratings == [
+        ("battleship", 700, 1, 0),
+        ("bomberman", 700, 1, 0),
         ("checkers", 700, 1, 0),
         ("chess960", 700, 1, 0),
         ("connect_four", 700, 1, 0),
         ("go", 700, 1, 0),
         ("reversi", 700, 1, 0),
+        ("tetris", 700, 1, 0),
+        ("tron", 700, 1, 0),
+        ("ultimate_ttt", 700, 1, 0),
     ]
     get_settings.cache_clear()
 

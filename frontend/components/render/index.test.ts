@@ -8,9 +8,19 @@ describe("game renderer registry", () => {
     expect(hasRenderer("chess960")).toBe(true);
   });
 
-  it.each(["connect_four", "reversi", "checkers", "go", "pong"])(
-    "registers the %s production renderer",
-    (game) => expect(hasRenderer(game)).toBe(true),
+  it.each([
+    "connect_four",
+    "reversi",
+    "checkers",
+    "go",
+    "pong",
+    "tron",
+    "ultimate_ttt",
+    "battleship",
+    "bomberman",
+    "tetris",
+  ])("registers the %s production renderer", (game) =>
+    expect(hasRenderer(game)).toBe(true),
   );
 
   it("rejects unregistered renderers", () => {

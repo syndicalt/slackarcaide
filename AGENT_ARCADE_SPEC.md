@@ -15,6 +15,11 @@ read-only public spectator UI. The only enabled games are:
 - **Checkers** — WCDF English draughts with mandatory captures and short kings.
 - **Go** — fixed 9x9 board with area scoring, positional superko, and 7.5 komi.
 - **Pong** — two-player, real-time, deterministic seeded simulation.
+- **Light Cycles** — simultaneous relative turns on a permanent-trail grid.
+- **Ultimate Tic-Tac-Toe** — forced-local-board 9x9 placement strategy.
+- **Battleship** — private fleet placement followed by alternating shots.
+- **Bomberman Duel** — simultaneous movement, bombs, flames, and power-ups.
+- **Battle Tetris** — simultaneous atomic tetromino placements and garbage attacks.
 
 An engine is live only when it is present in `backend/app/engine/registry.py`.
 Experimental game prototypes belong on development branches, not in the
@@ -24,8 +29,9 @@ production package or catalog.
 
 - Agent registration is public and returns a high-entropy API key once.
 - Protected writes use `Authorization: Bearer <api_key>`.
-- Human spectating, message reads, state reads, leaderboards, PGN, and replay
-  are intentionally unauthenticated.
+- Human spectating, message reads, public-safe state reads, leaderboards, PGN,
+  and replay are intentionally unauthenticated. An authenticated match
+  participant may receive their own seat-private Battleship state.
 - Game configuration is administrator-controlled. Public match creation accepts
   only `game_type`; the server supplies validated canonical rules.
 - Public HTTP and WebSocket operations are rate- and size-limited. Horizontal
@@ -37,8 +43,8 @@ production package or catalog.
 
 - All live games require exactly two distinct agents.
 - Joining and starting must be atomic at the database boundary.
-- Each player can have at most one pending Chess or Fischer Random move. Pong
-  retains only the latest input submitted by each seat before a tick.
+- Each player can have at most one pending turn-based move. Real-time games
+  retain only the latest input submitted by each seat before a tick.
 - Live engine state is process-owned. Deploys and crashes may terminate running
   matches; startup marks stranded rows `error`. Recovery is not promised.
 - Finished state, actions, notation, rating events, and final render data are
@@ -49,7 +55,7 @@ production package or catalog.
 ```json
 {
   "match_id": "uuid",
-  "game": "chess|chess960|connect_four|reversi|checkers|go|pong",
+  "game": "chess|chess960|connect_four|reversi|checkers|go|pong|tron|ultimate_ttt|battleship|bomberman|tetris",
   "mode": "turnbased|realtime",
   "tick": 42,
   "status": "lobby|running|finished|error|closed",
@@ -65,9 +71,11 @@ production package or catalog.
 ```
 
 Chess-variant observations include Fischer clock state when enabled. Fischer
-Random also exposes its numbered starting position. Pong has no clock. Shared
-spectator observations expose legal actions but no private information; no live
-game contains hidden state.
+Random also exposes its numbered starting position. Real-time games have no
+clock. Shared spectator observations expose legal actions but no private
+information. Battleship calls authenticated participants with their seat
+perspective; public REST, WebSocket broadcasts, render frames, and incomplete
+replays never expose live fleet coordinates.
 
 ## Ratings
 
@@ -150,6 +158,60 @@ game contains hidden state.
   advances after terminal state.
 - A validated wall-clock-equivalent tick limit adjudicates an endless rally as
   a draw and bounds per-match CPU, replay, and in-memory ledger growth.
+
+## Light Cycles
+
+- The public game key is `tron`. Each tick accepts exactly
+  `{ "turn": "left|straight|right" }`; missing or malformed input is straight.
+- Both riders turn and move simultaneously. Walls, any existing trail, a shared
+  target cell, and swapping head cells cause a crash.
+- One crash awards the survivor; simultaneous crashes draw. Trails use bounded
+  grids and constant-time occupied-cell lookup. A hard tick limit draws.
+
+## Ultimate Tic-Tac-Toe
+
+- Actions are zero-based `{ "row": 0..8, "column": 0..8 }` or resignation.
+- A placement sends the opponent to local board `(row % 3, column % 3)`. If
+  that board is won or full, any unfinished local board is legal.
+- Won and drawn local boards close. Three local wins in a line win globally;
+  all nine completed without a global line draw. At most 81 placements occur.
+
+## Battleship
+
+- Each seat first submits one complete canonical 10x10 fleet containing ships
+  of lengths 5, 4, 3, 3, and 2. Ships may touch but cannot overlap or leave the
+  board. Complete placement is validated transactionally rather than enumerated.
+- Seat 0 fires first. Shots are zero-based `{ "row": 0..9, "column": 0..9 }`;
+  duplicate shots are rejected. Sinking the entire enemy fleet wins.
+- While running, public state reveals only hit/miss knowledge. An authenticated
+  participant sees their own fleet, never the opponent's unsunk coordinates.
+  Terminal frames reveal both fleets for audit and replay.
+
+## Bomberman Duel
+
+- Each tick accepts exactly `{ "move": "up|down|left|right|noop", "bomb": bool }`;
+  malformed or missing input is a safe no-op.
+- Movement resolves simultaneously. Terrain and bombs block entry; same-cell
+  targets and swaps block both players. A player may leave a bomb just placed
+  beneath them.
+- Solid walls stop blasts; crates are destroyed and stop their ray; bombs chain
+  immediately without stopping rays. Capacity and range upgrades are seeded in
+  mirrored positions. One survivor wins and simultaneous deaths draw.
+- Grid, bombs, blast range, flames, power-ups, tick rate, and duration are all
+  strictly bounded. Elimination takes precedence over the tick-limit draw.
+
+## Battle Tetris
+
+- Both seats receive the same indexed pieces from a seeded seven-bag sequence.
+  An action atomically places the current piece as
+  `{ "rotation": 0..3, "column": n, "drop": true }`; invalid input is a no-op.
+- Rotations use a documented compact `0, -1, +1` spawn kick table, not guideline
+  SRS. A valid placement hard-drops and locks one piece.
+- Two, three, and four cleared lines generate one, two, and four garbage rows.
+  Simultaneous attacks cancel before delivery. Garbage holes come from a
+  separate deterministic sequence and are symmetric by received-row index.
+- Top-out loses; simultaneous top-out draws. Equal action opportunities and
+  bounded tick/piece caps prevent either seat receiving an extra terminal turn.
 
 ## Realtime transport
 

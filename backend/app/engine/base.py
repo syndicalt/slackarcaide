@@ -99,10 +99,30 @@ class BaseGame(ABC):
         """Optional — strongly recommended (spec 4.4)."""
         return []
 
+    def legal_actions_exhaustive(self, seat: int) -> bool:
+        """Whether ``get_legal_actions`` enumerates every valid action.
+
+        Engines with a combinatorial setup action may return a bounded schema
+        descriptor instead. The engine must then validate that action
+        transactionally in ``apply_action``. Normal play should remain
+        exhaustive so the host can reject invalid actions before buffering.
+        """
+        return True
+
+    def validate_action(self, action: Any, seat: int) -> None:
+        """Validate a non-exhaustively advertised action without mutation.
+
+        Most engines are guarded by exact membership in ``legal_actions`` and
+        need no additional work. Engines returning a schema descriptor must
+        override this hook so the API can reject malformed actions before they
+        enter the asynchronous turn buffer.
+        """
+        return None
+
     def observe(self, perspective: int | None = None) -> dict:
         """Return the game-specific observation block (state, scores, summary,
-        legal_actions, last_move, time). ``perspective`` is reserved for future
-        games with seat-private observations; current games ignore it."""
+        legal_actions, last_move, time). ``perspective`` is a participant seat
+        for games with private state; ``None`` must always be spectator-safe."""
         raise NotImplementedError
 
     # realtime path ---------------------------------------------------------

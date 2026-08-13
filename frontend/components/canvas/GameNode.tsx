@@ -14,6 +14,11 @@ const ARCADE_ACCENT: Record<string, string> = {
   reversi: "#22ffd1",
   checkers: "#ff9f43",
   go: "#c9974f",
+  tron: "#39ff88",
+  ultimate_ttt: "#9b6bff",
+  battleship: "#4aa8ff",
+  bomberman: "#ff3b53",
+  tetris: "#ffe600",
 };
 
 type Props = {

@@ -10,6 +10,8 @@ from pydantic import ValidationError
 
 from app.engine import base
 from app.engine.base import IllegalMove
+from app.engine.games.battleship import Battleship
+from app.engine.games.bomberman import Bomberman
 from app.engine.games.checkers import Checkers
 from app.engine.games.chess import Chess
 from app.engine.games.chess960 import Chess960
@@ -17,6 +19,9 @@ from app.engine.games.connect_four import ConnectFour
 from app.engine.games.go import Go
 from app.engine.games.pong import BALL_R, H, Pong, W
 from app.engine.games.reversi import Reversi
+from app.engine.games.tetris import Tetris
+from app.engine.games.tron import Tron
+from app.engine.games.ultimate_ttt import UltimateTicTacToe
 from app.engine.registry import GAMES_CATALOG, REGISTRY, normalize_game_config
 
 SEATS = [
@@ -42,6 +47,11 @@ def test_production_registry_is_an_explicit_live_game_allowlist() -> None:
         "checkers",
         "go",
         "pong",
+        "tron",
+        "ultimate_ttt",
+        "battleship",
+        "bomberman",
+        "tetris",
     }
     assert set(REGISTRY) == expected
     assert {game["game"] for game in GAMES_CATALOG} == expected
@@ -60,7 +70,23 @@ def test_registry_normalizes_trusted_config_before_match_persistence() -> None:
         normalize_game_config("disabled-game", {})
 
 
-@pytest.mark.parametrize("engine", [Chess, Chess960, ConnectFour, Reversi, Checkers, Go, Pong])
+@pytest.mark.parametrize(
+    "engine",
+    [
+        Chess,
+        Chess960,
+        ConnectFour,
+        Reversi,
+        Checkers,
+        Go,
+        Pong,
+        Tron,
+        UltimateTicTacToe,
+        Battleship,
+        Bomberman,
+        Tetris,
+    ],
+)
 @pytest.mark.parametrize(
     ("seed", "seats"),
     [
@@ -73,13 +99,7 @@ def test_registry_normalizes_trusted_config_before_match_persistence() -> None:
     ],
 )
 def test_live_engines_reject_invalid_seed_and_seat_topology(
-    engine: type[Chess]
-    | type[Chess960]
-    | type[ConnectFour]
-    | type[Reversi]
-    | type[Checkers]
-    | type[Go]
-    | type[Pong],
+    engine: type[base.BaseGame],
     seed: object,
     seats: list[dict],
 ) -> None:

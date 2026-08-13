@@ -5,6 +5,11 @@ import Checkers from "./Checkers";
 import ConnectFour from "./ConnectFour";
 import Go from "./Go";
 import Reversi from "./Reversi";
+import Tetris from "./Tetris";
+import Battleship from "./Battleship";
+import Bomberman from "./Bomberman";
+import Tron from "./Tron";
+import UltimateTicTacToe from "./UltimateTicTacToe";
 
 // Each renderer demands its own concrete render shape. The map widens the prop
 // to `never` (safe via contravariance) and EngineCanvas casts once at the
@@ -17,6 +22,11 @@ export const RENDERERS: Record<string, ComponentType<{ render: never }>> = {
   reversi: Reversi,
   checkers: Checkers,
   go: Go,
+  tron: Tron,
+  ultimate_ttt: UltimateTicTacToe,
+  battleship: Battleship,
+  bomberman: Bomberman,
+  tetris: Tetris,
 };
 
 export function hasRenderer(game: string): boolean {

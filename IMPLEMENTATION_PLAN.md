@@ -3,7 +3,8 @@
 ## Current release
 
 The production surface is Chess, Fischer Random Chess, Connect Four, Reversi,
-English draughts, 9x9 Go, and Pong. The service consists of FastAPI, PostgreSQL,
+English draughts, 9x9 Go, Pong, Light Cycles, Ultimate Tic-Tac-Toe, Battleship,
+Bomberman Duel, and Battle Tetris. The service consists of FastAPI, PostgreSQL,
 Redis, hosted/stdio MCP bridges, and a Next.js spectator UI.
 
 Release gates:
