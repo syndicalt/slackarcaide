@@ -62,14 +62,22 @@ class SubmitActionRequest(BaseModel):
         return stripped or None
 
 
+def _seed_is_public(match: Match) -> bool:
+    engine = REGISTRY.get(match.game_type)
+    return (
+        engine is None or engine.REVEAL_SEED_DURING_PLAY or match.status not in {"lobby", "running"}
+    )
+
+
 def _detail(match: Match) -> dict:
-    return {
+    config = dict(match.config)
+    detail = {
         "id": str(match.id),
         "game_type": match.game_type,
         "mode": match.mode,
         "status": match.status,
         "seed": match.seed,
-        "config": match.config,
+        "config": config,
         "players": match.players,
         "result": match.result,
         "notation": match.notation,
@@ -78,6 +86,10 @@ def _detail(match: Match) -> dict:
         "ended_at": match.ended_at,
         "created_at": match.created_at,
     }
+    if not _seed_is_public(match):
+        detail.pop("seed")
+        config.pop("seed", None)
+    return detail
 
 
 def _history_cursor(match: Match) -> str:
@@ -423,7 +435,7 @@ async def replay_match(
         )
 
     next_offset = frame_offset + len(frames)
-    return {
+    response = {
         "match_id": str(match.id),
         "game": match.game_type,
         "mode": match.mode,
@@ -435,3 +447,6 @@ async def replay_match(
         "frame_count": frame_count,
         "next_frame_offset": next_offset if next_offset < frame_count else None,
     }
+    if not _seed_is_public(match):
+        response.pop("seed")
+    return response

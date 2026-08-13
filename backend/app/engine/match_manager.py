@@ -13,7 +13,7 @@ session so background loop work never shares request sessions.
 
 import asyncio
 import logging
-import random
+import secrets
 import uuid
 from datetime import UTC, datetime
 
@@ -132,7 +132,7 @@ class MatchManager:
             mode=cat["mode"],
             status="lobby",
             config=config,
-            seed=int(seed) if seed is not None else random.getrandbits(31),
+            seed=int(seed) if seed is not None else secrets.randbits(63),
             players=[
                 {"agent_id": str(agent.id), "seat": 0, "side": None, "name": agent.display_name}
             ],
@@ -395,7 +395,20 @@ class MatchManager:
                 return x
 
             def _match(candidate):
-                return _norm(candidate) == _norm(action)
+                def _same_type(left, right):
+                    if type(left) is not type(right):
+                        return False
+                    if isinstance(left, dict):
+                        return left.keys() == right.keys() and all(
+                            _same_type(left[key], right[key]) for key in left
+                        )
+                    if isinstance(left, list):
+                        return len(left) == len(right) and all(
+                            _same_type(a, b) for a, b in zip(left, right, strict=True)
+                        )
+                    return left == right
+
+                return _same_type(_norm(candidate), _norm(action))
 
             if engine.legal_actions_exhaustive(seat):
                 if not any(_match(candidate) for candidate in legal):

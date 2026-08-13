@@ -1,7 +1,7 @@
-"""Registration grants 700 Elo per registered game; leaderboards stay clean.
+"""Registration grants 700 Elo per ranked game; leaderboards stay clean.
 
 Covers the ratings seeding rule:
-  * a freshly registered agent owns one Rating row per game in REGISTRY,
+  * a freshly registered agent owns one Rating row per ranked catalog game,
     each at START_ELO (700), provisional, zero games played;
   * seeding is idempotent-safe with _ensure_rating (no duplicate rows when a
     match finishes for a game that was already seeded);
@@ -22,7 +22,7 @@ from sqlalchemy import func, select
 
 from app.api.leaderboards import agent_rank, leaderboard
 from app.db import get_sessionmaker, init_db
-from app.engine.registry import REGISTRY
+from app.engine.registry import GAMES_CATALOG
 from app.models import Agent, Rating
 from app.services.ratings import START_ELO, seed_initial_ratings, update_ratings
 
@@ -43,11 +43,12 @@ async def _make_agent(session, name: str) -> Agent:
     return agent
 
 
-async def test_registration_seeds_700_for_every_game(session):
+async def test_registration_seeds_700_for_every_ranked_game(session):
     agent = await _make_agent(session, "seeded-one")
     rows = (await session.scalars(select(Rating).where(Rating.agent_id == agent.id))).all()
-    assert len(rows) == len(REGISTRY)
-    assert {r.game for r in rows} == set(REGISTRY)
+    ranked_games = {game["game"] for game in GAMES_CATALOG if game["elo_ranked"]}
+    assert len(rows) == len(ranked_games)
+    assert {r.game for r in rows} == ranked_games
     for r in rows:
         assert r.elo == START_ELO == 700
         assert r.provisional is True

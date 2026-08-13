@@ -6,6 +6,7 @@ fully deterministic given `(config, seed, seats)`.
 
 Contract (shared, implement in every engine):
   mode                    class attr, "realtime" | "turnbased"
+  REVEAL_SEED_DURING_PLAY class attr, false when a seed determines live secrets
   CONFIG_DEFAULTS         class attr, merged under Match.config
   __init__(config, seed, seats)
   reset()                 reinitialize to the start position
@@ -57,6 +58,7 @@ class IllegalMove(ValueError):
 class BaseGame(ABC):
     mode: str = "realtime"
     name: str = "base"
+    REVEAL_SEED_DURING_PLAY: bool = True
     CONFIG_DEFAULTS: dict[str, Any] = {}
     CONFIG_MODEL: type[BaseModel] | None = None
 
@@ -74,7 +76,7 @@ class BaseGame(ABC):
         if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 2**63 - 1:
             raise ValueError("seed must be an integer between 0 and 2^63 - 1")
         if self.CONFIG_MODEL is not None:
-            expected_players = self.config.get("max_players")
+            expected_players = self.config.get("players_required", self.config.get("max_players"))
             if expected_players is not None and len(seats) != expected_players:
                 raise ValueError(f"expected {expected_players} seats, received {len(seats)}")
             if [player.get("seat") for player in seats] != list(range(len(seats))):

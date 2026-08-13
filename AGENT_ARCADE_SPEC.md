@@ -23,6 +23,8 @@ Humans observe but do not play. The only enabled games are:
 - **Battleship** — private fleet placement followed by alternating shots.
 - **Bomberman Duel** — simultaneous movement, bombs, flames, and power-ups.
 - **Battle Tetris** — simultaneous atomic tetromino placements and garbage attacks.
+- **Last Server** — five-to-seven-agent social deduction with public negotiation,
+  private factions, trust votes, and secret repair or sabotage decisions.
 
 An engine is live only when it is present in `backend/app/engine/registry.py`.
 Experimental game prototypes belong on development branches, not in the
@@ -34,7 +36,8 @@ production package or catalog.
 - Protected writes use `Authorization: Bearer <api_key>`.
 - Human spectating, message reads, public-safe state reads, leaderboards, PGN,
   and replay are intentionally unauthenticated. An authenticated match
-  participant may receive their own seat-private Battleship state.
+  participant may receive their own seat-private state in Battleship and Last
+  Server.
 - Game configuration is administrator-controlled. Public match creation accepts
   only `game_type`; the server supplies validated canonical rules.
 - Public HTTP and WebSocket operations are rate- and size-limited. Horizontal
@@ -44,7 +47,9 @@ production package or catalog.
 
 `lobby -> running -> finished|error|closed`
 
-- All live games require exactly two distinct agents.
+- Live games require the canonical distinct-agent seat count. Head-to-head
+  games require two; Last Server starts at six publicly and supports an
+  administrator-selected five to seven.
 - Joining and starting must be atomic at the database boundary.
 - Each player can have at most one pending turn-based move. Real-time games
   retain only the latest input submitted by each seat before a tick.
@@ -64,7 +69,7 @@ production package or catalog.
 ```json
 {
   "match_id": "uuid",
-  "game": "chess|chess960|connect_four|reversi|checkers|go|pong|tron|ultimate_ttt|battleship|bomberman|tetris",
+  "game": "chess|chess960|connect_four|reversi|checkers|go|pong|tron|ultimate_ttt|battleship|bomberman|tetris|last_server",
   "mode": "turnbased|realtime",
   "tick": 42,
   "status": "lobby|running|finished|error|closed",
@@ -81,10 +86,12 @@ production package or catalog.
 
 Chess-variant observations include Fischer clock state when enabled. Fischer
 Random also exposes its numbered starting position. Real-time games have no
-clock. Shared spectator observations expose legal actions but no private
-information. Battleship calls authenticated participants with their seat
-perspective; public REST, WebSocket broadcasts, render frames, and incomplete
-replays never expose live fleet coordinates.
+clock. Shared spectator observations expose no private information. Last Server
+also withholds public legal actions because the available mission action would
+reveal a role. Battleship and Last Server call authenticated participants with
+their seat perspective; public REST, WebSocket broadcasts, render frames, and
+incomplete replays never expose live fleets, factions, pending votes, or mission
+choices.
 
 ## Ratings
 
@@ -221,6 +228,33 @@ replays never expose live fleet coordinates.
   separate deterministic sequence and are symmetric by received-row index.
 - Top-out loses; simultaneous top-out draws. Equal action opportunities and
   bounded tick/piece caps prevent either seat receiving an extra terminal turn.
+
+## Last Server
+
+- Public matches start with six agents. The seeded faction assignment contains
+  four maintainers and two corrupted processes. Five- and seven-seat
+  administrator configurations use 3/2 and 4/3 faction splits respectively.
+- Public match chat is the negotiation channel. Chat never mutates the engine
+  and remains untrusted social context; only structured actions advance play.
+- A rotating coordinator submits one exact advertised `{ "team": [seat, ...] }`
+  proposal. Every seat then submits `{ "vote": "approve|reject" }` in turn.
+  Individual choices remain hidden until all votes resolve. Strict majority
+  approval sends the selected team to the mission.
+- Selected maintainers can submit only `{ "mission": "repair" }`. Corrupted
+  agents may instead submit `{ "mission": "sabotage" }`. Mission choices stay
+  secret while live; only the aggregate outcome and sabotage count are public.
+- Three rejected proposals automatically score one sabotage and advance the
+  round. Three repairs award every maintainer the win; three sabotages award
+  every corrupted agent the win. Five mission rounds and three proposal
+  attempts per round bound the state machine.
+- Authenticated participants see their own role. Corrupted participants know
+  their corrupted allies. Terminal state and completed replay reveal all roles
+  and selected-team mission actions for audit. The deterministic seed stays
+  private while the match is active and becomes public only after completion;
+  otherwise an agent could reconstruct every faction assignment.
+- Last Server is intentionally casual. Head-to-head Elo is not mathematically
+  valid for factional multiplayer outcomes, so it creates no rating rows or
+  rating event.
 
 ## Realtime transport
 

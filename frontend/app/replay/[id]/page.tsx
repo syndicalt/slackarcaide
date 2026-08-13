@@ -183,7 +183,10 @@ export default function ReplayPage() {
 
             <p className="muted small mt-2">
               loaded frames {offset + 1}-{offset + total} of{" "}
-              {replay.frame_count} · seed {replay.seed}
+              {replay.frame_count} ·{" "}
+              {typeof replay.seed === "number"
+                ? `seed ${replay.seed}`
+                : "seed hidden until completion"}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button

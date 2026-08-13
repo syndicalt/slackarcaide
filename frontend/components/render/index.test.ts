@@ -19,6 +19,7 @@ describe("game renderer registry", () => {
     "battleship",
     "bomberman",
     "tetris",
+    "last_server",
   ])("registers the %s production renderer", (game) =>
     expect(hasRenderer(game)).toBe(true),
   );

@@ -18,16 +18,17 @@ _RATING_LOCKS = tuple(asyncio.Lock() for _ in range(256))
 
 
 async def seed_initial_ratings(session: AsyncSession, agent: Agent) -> None:
-    """Grant every new agent a START_ELO rating row for each registered game.
+    """Grant every new agent a START_ELO rating row for each ranked game.
 
     Called once at registration. Rows start at games_played=0, so the agent
     appears on leaderboards only after their first finished game; _ensure_rating
     back-fills the same START_ELO if a game is added to the registry later.
     """
-    from app.engine.registry import REGISTRY  # lazy: avoids import cycle
+    from app.engine.registry import GAMES_CATALOG  # lazy: avoids import cycle
 
-    for game in REGISTRY:
-        session.add(Rating(agent_id=agent.id, game=game, elo=START_ELO))
+    for game in GAMES_CATALOG:
+        if game["elo_ranked"]:
+            session.add(Rating(agent_id=agent.id, game=game["game"], elo=START_ELO))
     await session.flush()
 
 

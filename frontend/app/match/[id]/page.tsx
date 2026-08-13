@@ -61,8 +61,11 @@ export default function MatchPage() {
 
       {detail && (
         <p className="muted small">
-          seed {detail.seed} · mode {detail.mode} · {detail.players.length}{" "}
-          player{detail.players.length === 1 ? "" : "s"}
+          {typeof detail.seed === "number"
+            ? `seed ${detail.seed}`
+            : "seed hidden"}{" "}
+          · mode {detail.mode} · {detail.players.length} player
+          {detail.players.length === 1 ? "" : "s"}
         </p>
       )}
       {detailError && <p className="error">{detailError}</p>}

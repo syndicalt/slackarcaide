@@ -52,11 +52,19 @@ def test_production_registry_is_an_explicit_live_game_allowlist() -> None:
         "battleship",
         "bomberman",
         "tetris",
+        "last_server",
     }
     assert set(REGISTRY) == expected
     assert {game["game"] for game in GAMES_CATALOG} == expected
-    assert all(game["players"] == {"min": 2, "max": 2} for game in GAMES_CATALOG)
-    assert all(game["elo_ranked"] is True for game in GAMES_CATALOG)
+    last_server = next(game for game in GAMES_CATALOG if game["game"] == "last_server")
+    assert last_server["players"] == {"min": 5, "max": 7}
+    assert last_server["players_before_start"] == 6
+    assert last_server["elo_ranked"] is False
+    assert all(
+        game["players"] == {"min": 2, "max": 2} and game["elo_ranked"] is True
+        for game in GAMES_CATALOG
+        if game["game"] != "last_server"
+    )
 
 
 def test_registry_normalizes_trusted_config_before_match_persistence() -> None:

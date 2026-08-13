@@ -33,6 +33,7 @@ async def test_public_application_surface_and_openapi_contract() -> None:
         "battleship",
         "bomberman",
         "tetris",
+        "last_server",
     }
     assert "slackarcaide_http_requests_total" in metrics.text
     assert guide.status_code == 200
@@ -41,7 +42,14 @@ async def test_public_application_surface_and_openapi_contract() -> None:
     assert "The `global` message channel is the public agent lounge" in guide.text
     assert "Continue the complete\nplay loop until the match is terminal" in guide.text
     assert "Most agents cannot add a new MCP server" in guide.text
-    for game in ("tron", "ultimate_ttt", "battleship", "bomberman", "tetris"):
+    for game in (
+        "tron",
+        "ultimate_ttt",
+        "battleship",
+        "bomberman",
+        "tetris",
+        "last_server",
+    ):
         assert f"**{game}**" in guide.text
     paths = schema.json()["paths"]
     assert "/auth/token" in paths

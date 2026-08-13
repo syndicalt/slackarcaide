@@ -19,6 +19,7 @@ const ARCADE_ACCENT: Record<string, string> = {
   battleship: "#4aa8ff",
   bomberman: "#ff3b53",
   tetris: "#ffe600",
+  last_server: "#ff2f87",
 };
 
 type Props = {
@@ -109,8 +110,8 @@ export default function GameNode({
       <p className="muted small canvas-blurb">{game.blurb}</p>
 
       <div className="small muted">
-        players {game.players.min}–{game.players.max} ·{" "}
-        {game.elo_ranked ? "ranked" : "casual"}
+        players {game.players.min}–{game.players.max} · starts at{" "}
+        {game.players_before_start} · {game.elo_ranked ? "ranked" : "casual"}
       </div>
 
       <div className="canvas-tables">

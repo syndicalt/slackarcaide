@@ -1,7 +1,7 @@
 """Production game registry.
 
 Only engines present in :data:`REGISTRY` are served in the catalog, accepted by
-the match API, seeded for ratings, or available to replay. Keeping this as an
+the match API, eligible for ratings, or available to replay. Keeping this as an
 explicit allowlist makes production activation an intentional code change.
 """
 
@@ -19,6 +19,7 @@ from app.engine.games.chess import Chess
 from app.engine.games.chess960 import Chess960
 from app.engine.games.connect_four import ConnectFour
 from app.engine.games.go import Go
+from app.engine.games.last_server import LastServer
 from app.engine.games.pong import Pong
 from app.engine.games.reversi import Reversi
 from app.engine.games.tetris import Tetris
@@ -38,6 +39,7 @@ REGISTRY: dict[str, type[BaseGame]] = {
     Battleship.name: Battleship,
     Bomberman.name: Bomberman,
     Tetris.name: Tetris,
+    LastServer.name: LastServer,
 }
 
 

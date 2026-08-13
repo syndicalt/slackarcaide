@@ -10,6 +10,7 @@ import Battleship from "./Battleship";
 import Bomberman from "./Bomberman";
 import Tron from "./Tron";
 import UltimateTicTacToe from "./UltimateTicTacToe";
+import LastServer from "./LastServer";
 
 // Each renderer demands its own concrete render shape. The map widens the prop
 // to `never` (safe via contravariance) and EngineCanvas casts once at the
@@ -27,6 +28,7 @@ export const RENDERERS: Record<string, ComponentType<{ render: never }>> = {
   battleship: Battleship,
   bomberman: Bomberman,
   tetris: Tetris,
+  last_server: LastServer,
 };
 
 export function hasRenderer(game: string): boolean {

@@ -45,6 +45,7 @@ const CANONICAL_KEYS = [
   "battleship",
   "bomberman",
   "tetris",
+  "last_server",
 ];
 
 export const DEFAULT_LAYOUT: Record<string, Pos> = layoutGames(CANONICAL_KEYS);

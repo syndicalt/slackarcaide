@@ -38,6 +38,7 @@ describe("persisted canvas layout", () => {
       "battleship",
       "bomberman",
       "tetris",
+      "last_server",
     ]);
     expect(layoutGames(["pong", "chess", "third", "fourth"])).toEqual({
       pong: { x: 60, y: 120 },
