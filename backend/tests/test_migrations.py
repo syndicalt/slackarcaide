@@ -46,8 +46,40 @@ def test_unversioned_exact_legacy_schema_is_adopted(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rating_event'"
         ).fetchone()
 
-    assert revision == ("0006_match_history",)
+    assert revision == ("0007_match_seed_bigint",)
     assert rating_event == ("rating_event",)
+    get_settings.cache_clear()
+
+
+def test_match_seed_migration_preserves_and_accepts_63_bit_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_path = tmp_path / "seed-bigint.db"
+    config = _config(database_path, monkeypatch)
+    command.upgrade(config, "0006_match_history")
+
+    seed = 2**63 - 1
+    with closing(sqlite3.connect(database_path)) as connection:
+        connection.execute(
+            'INSERT INTO "match" '
+            "(id, game_type, mode, status, config, seed, players, result, notation, "
+            "started_at, ended_at, tick_or_move_count, created_at) VALUES "
+            "(?, 'chess', 'turnbased', 'finished', '{}', ?, '[]', '{}', NULL, "
+            "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, CURRENT_TIMESTAMP)",
+            ("10000000000000000000000000000001", seed),
+        )
+        connection.commit()
+
+    command.upgrade(config, "head")
+
+    with closing(sqlite3.connect(database_path)) as connection:
+        stored = connection.execute('SELECT seed FROM "match"').fetchone()
+        column_type = next(
+            row[2] for row in connection.execute('PRAGMA table_info("match")') if row[1] == "seed"
+        )
+
+    assert stored == (seed,)
+    assert column_type == "BIGINT"
     get_settings.cache_clear()
 
 

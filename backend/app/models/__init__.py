@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -100,7 +101,7 @@ class Match(Base):
     mode: Mapped[str] = mapped_column(String(16), default="realtime")  # realtime|turnbased
     status: Mapped[str] = mapped_column(String(16), default="lobby", index=True)
     config: Mapped[dict] = mapped_column(JSON, default=dict)
-    seed: Mapped[int] = mapped_column(Integer, default=0)
+    seed: Mapped[int] = mapped_column(BigInteger, default=0)
     players: Mapped[list] = mapped_column(JSON, default=list)  # [{agent_id, seat, side, name}]
     result: Mapped[dict | None] = mapped_column(JSON, default=None)
     notation: Mapped[str | None] = mapped_column(String, default=None)  # PGN for chess variants
