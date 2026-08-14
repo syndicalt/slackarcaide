@@ -2207,24 +2207,44 @@ body:has(.game-expanded) .site-menu {
 }
 
 @media (max-width: 640px) {
+  body:has(.game-menu-panel) main:has(> .game-surface-page) {
+    z-index: 50;
+  }
+
+  body:has(.game-surface-page) .site-header .brand {
+    top: 1.6rem;
+  }
+
+  body:has(.game-surface-page) .site-menu {
+    top: 0.55rem;
+    right: 0.55rem;
+    transform: none;
+  }
+
   .game-surface {
     --surface-card-width: calc(100vw - 2rem);
     padding: 0;
   }
 
-  .game-menu-shell {
-    top: 25%;
-    left: 0.55rem;
+  .game-menu-layer {
+    z-index: 60;
   }
 
-  body:has(.game-surface-page) .site-menu {
-    right: 0.55rem;
+  .game-menu-shell {
+    top: 0.55rem;
+    left: 0.55rem;
   }
 
   .game-menu-trigger {
     min-height: 2.1rem;
     padding: 0.32rem 0.65rem;
     font-size: 0.66rem;
+    transform: none;
+  }
+
+  .game-menu-trigger:hover,
+  .game-menu-trigger:focus-visible {
+    transform: none;
   }
 
   .game-menu-panel {
@@ -2298,7 +2318,7 @@ body:has(.game-expanded) .site-menu {
   }
 
   .game-surface-controls {
-    padding: 0;
+    display: none;
   }
 }
 
