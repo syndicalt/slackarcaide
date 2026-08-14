@@ -167,7 +167,7 @@ export function useCanvasData(intervalMs = 6000) {
     try {
       const [g, m] = await Promise.all([
         apiGet<GameInfo[]>("/games"),
-        apiGet<MatchListResponse>("/matches"),
+        apiGet<MatchListResponse>("/matches", { query: { limit: 200 } }),
       ]);
       setGames(g ?? []);
       setMatches(m?.matches ?? []);
