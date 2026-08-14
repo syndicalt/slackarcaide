@@ -71,6 +71,22 @@ describe("GameSurface", () => {
     );
   });
 
+  it("preserves the carousel position when the catalog refreshes", () => {
+    const { rerender } = render(<GameSurface games={games} matches={[]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Next game" }));
+    scrollTo.mockClear();
+
+    rerender(
+      <GameSurface
+        games={games.map((game) => ({ ...game }))}
+        matches={[match]}
+      />,
+    );
+
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
   it("exposes active matches and supports keyboard navigation", () => {
     render(<GameSurface games={games} matches={[match]} />);
 

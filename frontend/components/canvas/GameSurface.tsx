@@ -363,6 +363,8 @@ export default function GameSurface({ games, matches, error = "" }: Props) {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const surfaceRef = useRef<HTMLElement | null>(null);
   const cardRefs = useRef(new Map<string, HTMLElement>());
+  const activeGameRef = useRef(activeGame);
+  const surfaceInitialized = useRef(false);
   const animationFrame = useRef<number | null>(null);
   const expansionFrame = useRef<number | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -399,6 +401,7 @@ export default function GameSurface({ games, matches, error = "" }: Props) {
         left: card.offsetLeft - (scroller.clientWidth - card.clientWidth) / 2,
         behavior,
       });
+      activeGameRef.current = key;
       setActiveGame(key);
     },
     [],
@@ -432,6 +435,7 @@ export default function GameSurface({ games, matches, error = "" }: Props) {
         nearestDistance = Math.abs(signedDistance);
       }
     }
+    activeGameRef.current = nearest;
     setActiveGame((current) => (current === nearest ? current : nearest));
   }, [games]);
 
@@ -444,7 +448,14 @@ export default function GameSurface({ games, matches, error = "" }: Props) {
     const initial = games[0]?.game;
     if (!initial) return;
     const frame = requestAnimationFrame(() => {
-      centerGame(initial, "auto");
+      if (!surfaceInitialized.current) {
+        surfaceInitialized.current = true;
+        centerGame(initial, "auto");
+      } else if (!games.some((game) => game.game === activeGameRef.current)) {
+        // Catalog refreshes must preserve the spectator's scroll position. Only
+        // choose a new card when the active game was actually removed.
+        centerGame(initial, "auto");
+      }
       updateSurface();
     });
     return () => cancelAnimationFrame(frame);
